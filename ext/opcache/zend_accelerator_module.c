@@ -276,6 +276,12 @@ ZEND_INI_BEGIN()
 #ifdef ZEND_WIN32
 	STD_PHP_INI_ENTRY("opcache.mmap_base", NULL, PHP_INI_SYSTEM,	OnUpdateString,	                             accel_directives.mmap_base,                 zend_accel_globals, accel_globals)
 #endif
+
+#ifdef PHP_JIT
+	STD_PHP_INI_ENTRY("opcache.jit_buffer_size",  "0", PHP_INI_SYSTEM, OnUpdateLong, accel_directives.jit_buffer_size, zend_accel_globals, accel_globals)
+	STD_PHP_INI_ENTRY("opcache.jit_debug"      ,  "0", PHP_INI_SYSTEM, OnUpdateLong, accel_directives.jit_debug,       zend_accel_globals, accel_globals)
+	STD_PHP_INI_ENTRY("opcache.jit_opt"        , "-1", PHP_INI_SYSTEM, OnUpdateLong, accel_directives.jit_opt,         zend_accel_globals, accel_globals)
+#endif
 ZEND_INI_END()
 
 static int filename_is_in_cache(char *filename, int filename_len TSRMLS_DC)

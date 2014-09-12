@@ -212,6 +212,11 @@ typedef struct _zend_accel_directives {
 	zend_long           max_file_size;
 	zend_long           interned_strings_buffer;
 	char          *restrict_api;
+#ifdef PHP_JIT
+	zend_ulong          jit_buffer_size;
+	zend_ulong          jit_debug;
+    zend_ulong          jit_opt;
+#endif
 } zend_accel_directives;
 
 typedef struct _zend_accel_globals {

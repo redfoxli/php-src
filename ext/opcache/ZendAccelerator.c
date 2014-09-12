@@ -40,6 +40,10 @@
 #include "zend_accelerator_util_funcs.h"
 #include "zend_accelerator_hash.h"
 
+#ifdef PHP_JIT
+# include "jit/zend_jit.h"
+#endif
+
 #ifndef ZEND_WIN32
 #include  <netdb.h>
 #endif
@@ -2383,6 +2387,13 @@ static int accel_startup(zend_extension *extension)
 	}
 
 	zend_shared_alloc_lock(TSRMLS_C);
+
+#ifdef PHP_JIT
+	if (ZCG(accel_directives).jit_buffer_size) {
+		zend_jit_startup(ZCG(accel_directives).jit_buffer_size);
+	}
+#endif
+	
 	zend_shared_alloc_save_state();
 	zend_shared_alloc_unlock(TSRMLS_C);
 
@@ -2422,6 +2433,12 @@ static void accel_free_ts_resources()
 void accel_shutdown(TSRMLS_D)
 {
 	zend_ini_entry *ini_entry;
+
+#ifdef PHP_JIT
+	if (ZCG(accel_directives).jit_buffer_size) {
+		zend_jit_shutdown();
+	}
+#endif
 
 	zend_accel_blacklist_shutdown(&accel_blacklist);
 

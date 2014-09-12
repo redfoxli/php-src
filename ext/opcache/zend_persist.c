@@ -28,6 +28,10 @@
 #include "zend_constants.h"
 #include "zend_operators.h"
 
+#ifdef PHP_JIT
+# include "jit/zend_jit.h"
+#endif
+
 #define zend_accel_store(p, size) \
 	    (p = _zend_shared_memdup((void*)p, size, 1 TSRMLS_CC))
 #define zend_accel_memdup(p, size) \
@@ -198,7 +202,9 @@ static void zend_persist_zval(zval *z TSRMLS_DC)
 					Z_ARR_P(z) = zend_accel_memdup(Z_ARR_P(z), sizeof(zend_array));
 					zend_hash_persist_immutable(Z_ARRVAL_P(z) TSRMLS_CC);
 				} else {
-					GC_REMOVE_FROM_BUFFER(Z_ARR_P(z));
+					if (!zend_shared_alloc_get_xlat_entry(Z_ARR_P(z))) {
+						GC_REMOVE_FROM_BUFFER(Z_ARR_P(z));
+					}
 					zend_accel_store(Z_ARR_P(z), sizeof(zend_array));
 					zend_hash_persist(Z_ARRVAL_P(z), zend_persist_zval TSRMLS_CC);
 					/* make immutable array */
@@ -252,7 +258,9 @@ static void zend_persist_zval_const(zval *z TSRMLS_DC)
 					Z_ARR_P(z) = zend_accel_memdup(Z_ARR_P(z), sizeof(zend_array));
 					zend_hash_persist_immutable(Z_ARRVAL_P(z) TSRMLS_CC);
 				} else {
-					GC_REMOVE_FROM_BUFFER(Z_ARR_P(z));
+					if (!zend_shared_alloc_get_xlat_entry(Z_ARR_P(z))) {
+						GC_REMOVE_FROM_BUFFER(Z_ARR_P(z));
+					}
 					zend_accel_store(Z_ARR_P(z), sizeof(zend_array));
 					zend_hash_persist(Z_ARRVAL_P(z), zend_persist_zval TSRMLS_CC);
 					/* make immutable array */
@@ -709,6 +717,12 @@ zend_persistent_script *zend_accel_script_persist(zend_persistent_script *script
 	*key = zend_accel_memdup(*key, key_length + 1);
 	zend_accel_store_string(script->full_path);
 	zend_accel_store(script, sizeof(zend_persistent_script));
+
+#ifdef PHP_JIT
+	if (ZCG(accel_directives).jit_buffer_size) {
+		zend_jit(script TSRMLS_CC);
+	}
+#endif
 
 	return script;
 }
