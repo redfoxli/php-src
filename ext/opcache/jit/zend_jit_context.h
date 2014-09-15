@@ -388,7 +388,7 @@ static inline int ssa_result_var(zend_op_array *op_array, zend_op *opline)
 				/* TODO: more accurate array constant handling ??? */ \
 				tmp |= MAY_BE_ARRAY_KEY_ANY | MAY_BE_ARRAY_OF_ANY | MAY_BE_ARRAY_OF_REF; \
 			} \
-			return tmp; \ 
+			return tmp; \
 		} else { \
 			return get_ssa_var_info(info, info->ssa ? info->ssa[opline - op_array->opcodes].opN##_use : -1); \
 		} \
