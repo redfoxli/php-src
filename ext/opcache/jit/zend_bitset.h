@@ -23,6 +23,17 @@
 
 typedef zend_ulong *zend_bitset;
 
+#if SIZEOF_ZEND_LONG == 4
+# define ZEND_BITSET_ELM_NUM(n)		((n) >> 5)
+# define ZEND_BITSET_BIT_NUM(n)		((zend_ulong)(n) & Z_UL(0x1f))
+#elif SIZEOF_ZEND_LONG == 8
+# define ZEND_BITSET_ELM_NUM(n)		((n) >> 6)
+# define ZEND_BITSET_BIT_NUM(n)		((zend_ulong)(n) & Z_UL(0x3f))
+#else
+# define ZEND_BITSET_ELM_NUM(n)		((n) / (sizeof(zend_long) * 8))
+# define ZEND_BITSET_BIT_NUM(n)		((n) % (sizeof(zend_long) * 8))
+#endif
+
 /* Returns the number of zend_ulong words needed to store a bitset that is N
    bits long.  */
 static inline uint32_t zend_bitset_len(uint32_t n)
@@ -35,17 +46,17 @@ static inline uint32_t zend_bitset_len(uint32_t n)
 
 static inline zend_bool zend_bitset_in(zend_bitset set, uint32_t n)
 {
-	return (set[n >> 5] & (Z_UL(1) << ((zend_ulong)n & Z_UL(0x1f)))) != Z_UL(0);
+	return (set[ZEND_BITSET_ELM_NUM(n)] & (Z_UL(1) << ZEND_BITSET_BIT_NUM(n))) != Z_UL(0);
 }
 
 static inline void zend_bitset_incl(zend_bitset set, uint32_t n)
 {
-	set[n >> 5] |= Z_UL(1) << ((zend_ulong)n & Z_UL(0x1f));
+	set[ZEND_BITSET_ELM_NUM(n)] |= Z_UL(1) << ZEND_BITSET_BIT_NUM(n);
 }
 
 static inline void zend_bitset_excl(zend_bitset set, uint32_t n)
 {
-	set[n >> 5] &= ~(Z_UL(1) << ((zend_ulong)n & Z_UL(0x1f)));
+	set[ZEND_BITSET_ELM_NUM(n)] &= ~(Z_UL(1) << ZEND_BITSET_BIT_NUM(n));
 }
 
 static inline void zend_bitset_clear(zend_bitset set, uint32_t len)
