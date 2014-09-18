@@ -174,7 +174,6 @@ static uint32_t zend_jit_lb_ssn_info(const zend_jit_call_info *call_info)
 
 	if (call_info->caller_init_opline->extended_value == call_info->num_args &&
 	    call_info->num_args == 3) {
-
 	    uint32_t arg1_info = ssa_op1_info(call_info->caller_op_array, call_info->arg_info[0].opline);
 	    uint32_t arg2_info = ssa_op1_info(call_info->caller_op_array, call_info->arg_info[1].opline);
 	    uint32_t arg3_info = ssa_op1_info(call_info->caller_op_array, call_info->arg_info[2].opline);
@@ -1261,8 +1260,8 @@ void zend_jit_func_info_startup(void)
 {
 	int i;
 
-	zend_hash_init(&func_info, 16, NULL, NULL, 1);
-	for (i = 0; i < sizeof(func_infos)/sizeof(func_infos[0]); i++) {
+	zend_hash_init(&func_info, sizeof(func_infos)/sizeof(func_info_t), NULL, NULL, 1);
+	for (i = 0; i < sizeof(func_infos)/sizeof(func_info_t); i++) {
 		if (zend_hash_str_add_ptr(&func_info, func_infos[i].name, func_infos[i].name_len, (void**)&func_infos[i]) == NULL) {
 			fprintf(stderr, "JIT: Duplicate function info for \"%s\"\n", func_infos[i].name);
 		}
