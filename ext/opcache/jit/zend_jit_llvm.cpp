@@ -597,6 +597,7 @@ static int zend_jit_unum(void)
 	return n;
 }
 
+/* {{{ static const char* zend_jit_func_name */
 static const char* zend_jit_func_name(zend_jit_context   *ctx,
                                       zend_op_array      *op_array,
                                       zend_jit_func_info *info)
@@ -628,7 +629,9 @@ static const char* zend_jit_func_name(zend_jit_context   *ctx,
 	memcpy(ret, str, len+1);
 	return ret;
 }
+/* }}} */
 
+/* {{{ static Function* zend_jit_get_func */
 static Function* zend_jit_get_func(zend_llvm_ctx      &llvm_ctx,
                                    zend_jit_context   *ctx,
                                    zend_op_array      *op_array,
@@ -715,9 +718,11 @@ static Function* zend_jit_get_func(zend_llvm_ctx      &llvm_ctx,
 		return func;
 	}
 }
+/* }}} */
 
 /* ??? ... ??? */
 
+/* {{{ static void zend_jit_expected_br */
 static void zend_jit_expected_br(zend_llvm_ctx &llvm_ctx,
                                  Value         *cmp,
                                  BasicBlock    *bb_true,
@@ -744,7 +749,9 @@ static void zend_jit_expected_br(zend_llvm_ctx &llvm_ctx,
 	br->setMetadata(LLVMContext::MD_prof, MDB.createBranchWeights(cost_true, cost_false));
 #endif
 }
+/* }}} */
 
+/* {{{ static void zend_jit_unexpected_br */
 static void zend_jit_unexpected_br(zend_llvm_ctx &llvm_ctx,
                                    Value         *cmp,
                                    BasicBlock    *bb_true,
@@ -771,7 +778,9 @@ static void zend_jit_unexpected_br(zend_llvm_ctx &llvm_ctx,
 	br->setMetadata(LLVMContext::MD_prof, MDB.createBranchWeights(cost_true, cost_false));
 #endif
 }
+/* }}} */
 
+/* {{{ static void zend_jit_expected_br_ex */
 static void zend_jit_expected_br_ex(zend_llvm_ctx &llvm_ctx,
                                     Value         *cmp,
                                     BasicBlock    *bb_true,
@@ -789,7 +798,9 @@ static void zend_jit_expected_br_ex(zend_llvm_ctx &llvm_ctx,
 		zend_jit_unexpected_br(llvm_ctx, cmp, bb_true, bb_false);
 	}
 }
+/* }}} */
 
+/* {{{ static inline Value* zend_jit_GEP */
 static inline Value* zend_jit_GEP(zend_llvm_ctx &llvm_ctx,
                                   Value         *base,
                                   long           offset,
@@ -841,7 +852,9 @@ static inline Value* zend_jit_GEP(zend_llvm_ctx &llvm_ctx,
 				offset),
 			type);
 }
+/* }}} */
 
+/* {{{ static int zend_jit_call_handler */
 static int zend_jit_call_handler(zend_llvm_ctx &ctx,
                                  zend_op       *opline,
                                  bool           tail_call)
@@ -1113,6 +1126,7 @@ static int zend_jit_call_handler(zend_llvm_ctx &ctx,
 	}
 	return 1;
 }
+/* }}} */
 
 #define ZEND_JIT_HELPER_FAST_CALL      (1<<0)
 #define ZEND_JIT_HELPER_VAR_ARGS       (1<<1)
@@ -1132,6 +1146,7 @@ static int zend_jit_call_handler(zend_llvm_ctx &ctx,
 #define ZEND_JIT_HELPER_ARG5_NOCAPTURE (1<<14)
 
 
+/* {{{ static inline Function* zend_jit_get_helper */
 static inline Function* zend_jit_get_helper(zend_llvm_ctx &llvm_ctx,
                                             void          *addr,
                                             Twine          sym,
@@ -1222,8 +1237,10 @@ static inline Function* zend_jit_get_helper(zend_llvm_ctx &llvm_ctx,
 	}
 	return _helper;
 }
+/* }}} */
 
 #if JIT_EXCEPTION
+/* {{{ static BasicBlock *zend_jit_find_exception_bb */
 static BasicBlock *zend_jit_find_exception_bb(zend_llvm_ctx &ctx, zend_op *opline)
 {
     int catch_bb_num = -1;
@@ -1273,8 +1290,10 @@ static BasicBlock *zend_jit_find_exception_bb(zend_llvm_ctx &ctx, zend_op *oplin
 		return ctx.bb_exception_exit;
 	}
 }
+/* }}} */
 #endif
 
+/* {{{ static int zend_jit_throw_exception */
 static int zend_jit_throw_exception(zend_llvm_ctx &ctx, zend_op *opline)
 {
 #if JIT_EXCEPTION
@@ -1283,7 +1302,9 @@ static int zend_jit_throw_exception(zend_llvm_ctx &ctx, zend_op *opline)
 #endif
 	return 1;
 }
+/* }}} */
 
+/* {{{ static int zend_jit_check_exception */
 static int zend_jit_check_exception(zend_llvm_ctx &ctx, zend_op *opline)
 {
 #if JIT_EXCEPTION
@@ -1301,7 +1322,9 @@ static int zend_jit_check_exception(zend_llvm_ctx &ctx, zend_op *opline)
 #endif
 	return 1;
 }
+/* }}} */
 
+/* {{{ static int zend_jit_store_opline */
 static int zend_jit_store_opline(zend_llvm_ctx &llvm_ctx, zend_op *opline, bool update = 1)
 {
 	Constant *_opline = llvm_ctx.builder.LLVM_GET_LONG((zend_uintptr_t)opline);
@@ -1316,7 +1339,9 @@ static int zend_jit_store_opline(zend_llvm_ctx &llvm_ctx, zend_op *opline, bool 
 	}
 	return 1;
 }
+/* }}} */
 
+/* {{{ static int zend_jit_handler */
 static int zend_jit_handler(zend_llvm_ctx &ctx, zend_op *opline)
 {
 	if (!ctx.valid_opline) {
@@ -1331,7 +1356,9 @@ static int zend_jit_handler(zend_llvm_ctx &ctx, zend_op *opline)
 	JIT_CHECK(zend_jit_check_exception(ctx, opline));
 	return 1;
 }
+/* }}} */
 
+/* {{{ static int zend_jit_tail_handler */
 static int zend_jit_tail_handler(zend_llvm_ctx &ctx, zend_op *opline)
 {
 	if (!ctx.valid_opline) {
@@ -1344,7 +1371,9 @@ static int zend_jit_tail_handler(zend_llvm_ctx &ctx, zend_op *opline)
 
 	return 1;
 }
+/* }}} */
 
+/* {{{ static int zend_jit_cond_jmp */
 static int zend_jit_cond_jmp(zend_llvm_ctx &llvm_ctx, zend_op *target, BasicBlock *l2)
 {
 	zend_jit_unexpected_br(llvm_ctx,
@@ -1360,14 +1389,18 @@ static int zend_jit_cond_jmp(zend_llvm_ctx &llvm_ctx, zend_op *target, BasicBloc
 		l2);
 	return 1;
 }
+/* }}} */
 
+/* {{{ static Value* zend_jit_load_const */
 static Value* zend_jit_load_const(zend_llvm_ctx &llvm_ctx, zval *zv)
 {
 	return llvm_ctx.builder.CreateIntToPtr(
 		llvm_ctx.builder.LLVM_GET_LONG((zend_uintptr_t)zv),
 		llvm_ctx.zval_ptr_type);
 }
+/* }}} */
 
+/* {{{ static Value* zend_jit_load_slot */
 static Value* zend_jit_load_slot(zend_llvm_ctx &llvm_ctx, int var)
 {
 	return zend_jit_GEP(
@@ -1376,22 +1409,30 @@ static Value* zend_jit_load_slot(zend_llvm_ctx &llvm_ctx, int var)
 			var,
 			llvm_ctx.zval_ptr_type);
 }
+/* }}} */
 
+/* {{{ static Value* zend_jit_load_tmp_zval */
 static Value* zend_jit_load_tmp_zval(zend_llvm_ctx &llvm_ctx, uint32_t var)
 {
 	return zend_jit_load_slot(llvm_ctx, var);
 }
+/* }}} */
 
+/* {{{ static Value* zend_jit_load_var */
 static Value* zend_jit_load_var(zend_llvm_ctx &llvm_ctx, uint32_t var)
 {
 	return zend_jit_load_slot(llvm_ctx, var);
 }
+/* }}} */
 
+/* {{{ static Value* zend_jit_load_cv_addr */
 static Value* zend_jit_load_cv_addr(zend_llvm_ctx &llvm_ctx, uint32_t var)
 {
 	return zend_jit_load_slot(llvm_ctx, var);
 }
+/* }}} */
 
+/* {{{ static Value* zend_jit_load_type_info */
 static Value* zend_jit_load_type_info(zend_llvm_ctx &llvm_ctx,
                                       Value         *zval_addr)
 {
@@ -1402,7 +1443,9 @@ static Value* zend_jit_load_type_info(zend_llvm_ctx &llvm_ctx,
 				offsetof(zval,u1.type_info),
 				PointerType::getUnqual(Type::getInt32Ty(llvm_ctx.context))), 4);
 }
+/* }}} */
 
+/* {{{ static int zend_jit_save_zval_type_info */
 static int zend_jit_save_zval_type_info(zend_llvm_ctx &llvm_ctx,
                                         Value         *zval_addr,
                                         Value         *type)
@@ -1417,7 +1460,9 @@ static int zend_jit_save_zval_type_info(zend_llvm_ctx &llvm_ctx,
 		4);
 	return 1;
 }
+/* }}} */
 
+/* {{{ static Value* zend_jit_load_type_flags */
 static Value* zend_jit_load_type_flags(zend_llvm_ctx &llvm_ctx,
                                       Value         *zval_addr)
 {
@@ -1428,7 +1473,9 @@ static Value* zend_jit_load_type_flags(zend_llvm_ctx &llvm_ctx,
 				offsetof(zval,u1.v.type_flags),
 				PointerType::getUnqual(Type::getInt8Ty(llvm_ctx.context))), 1);
 }
+/* }}} */
 
+/* {{{ static Value* zend_jit_load_type */
 static Value* zend_jit_load_type(zend_llvm_ctx &llvm_ctx,
                                  Value         *zval_addr,
                                  uint32_t       info)
@@ -1460,7 +1507,9 @@ static Value* zend_jit_load_type(zend_llvm_ctx &llvm_ctx,
 				PointerType::getUnqual(Type::getInt8Ty(llvm_ctx.context))),
 			((offsetof(zval,u1.v.type) % 4) == 0) ? 4 : 1);
 }
+/* }}} */
 
+/* {{{ static Value* zend_jit_load_type_c */
 static Value* zend_jit_load_type_c(zend_llvm_ctx &llvm_ctx,
                                    Value         *zval_addr,
                                    zend_uchar     op_type,
@@ -1473,7 +1522,9 @@ static Value* zend_jit_load_type_c(zend_llvm_ctx &llvm_ctx,
 		return zend_jit_load_type(llvm_ctx, zval_addr, info);
 	}
 }
+/* }}} */
 
+/* {{{ static Value* zend_jit_load_type_info_c */
 static Value* zend_jit_load_type_info_c(zend_llvm_ctx &llvm_ctx,
                                         Value         *zval_addr,
                                         zend_uchar     op_type,
@@ -1505,7 +1556,9 @@ static Value* zend_jit_load_type_info_c(zend_llvm_ctx &llvm_ctx,
 		return zend_jit_load_type_info(llvm_ctx, zval_addr);
 	}
 }
+/* }}} */
 
+/* {{{ static Value* zend_jit_load_lval */
 static Value* zend_jit_load_lval(zend_llvm_ctx &llvm_ctx,
                                  Value         *zval_addr)
 {
@@ -1517,7 +1570,9 @@ static Value* zend_jit_load_lval(zend_llvm_ctx &llvm_ctx,
 				PointerType::getUnqual(Type::LLVM_GET_LONG_TY(llvm_ctx.context))),
 			4);
 }
+/* }}} */
 
+/* {{{ static Value* zend_jit_load_lval_c */
 static Value* zend_jit_load_lval_c(zend_llvm_ctx &llvm_ctx,
                                    Value         *zval_addr,
                                    zend_uchar     op_type,
@@ -1539,7 +1594,9 @@ static Value* zend_jit_load_lval_c(zend_llvm_ctx &llvm_ctx,
 		return zend_jit_load_lval(llvm_ctx, zval_addr);
 	}
 }
+/* }}} */
 
+/* {{{ static int zend_jit_save_zval_lval */
 static int zend_jit_save_zval_lval(zend_llvm_ctx &llvm_ctx,
                                    Value       *zval_addr,
                                    Value       *val)
@@ -1554,7 +1611,9 @@ static int zend_jit_save_zval_lval(zend_llvm_ctx &llvm_ctx,
 		4);
 	return 1;
 }
+/* }}} */
 
+/* {{{ static Value* zend_jit_load_dval */
 static Value* zend_jit_load_dval(zend_llvm_ctx &llvm_ctx,
                                  Value         *zval_addr,
                                  int            ssa_var,
@@ -1571,7 +1630,9 @@ static Value* zend_jit_load_dval(zend_llvm_ctx &llvm_ctx,
 				PointerType::getUnqual(Type::getDoubleTy(llvm_ctx.context))),
 			4);
 }
+/* }}} */
 
+/* {{{ static int zend_jit_save_zval_dval */
 static int zend_jit_save_zval_dval(zend_llvm_ctx &llvm_ctx,
                                    Value       *zval_addr,
                                    Value       *val)
@@ -1586,7 +1647,9 @@ static int zend_jit_save_zval_dval(zend_llvm_ctx &llvm_ctx,
 		4);
 	return 1;
 }
+/* }}} */
 
+/* {{{ static Value* zend_jit_load_counted */
 static Value* zend_jit_load_counted(zend_llvm_ctx &llvm_ctx,
                                     Value         *zval_addr)
 {
@@ -1599,7 +1662,9 @@ static Value* zend_jit_load_counted(zend_llvm_ctx &llvm_ctx,
 				PointerType::getUnqual(PointerType::getUnqual(Type::getInt32Ty(llvm_ctx.context)))),
 			4);
 }
+/* }}} */
 
+/* {{{ static Value* zend_jit_load_reference */
 static Value* zend_jit_load_reference(zend_llvm_ctx &llvm_ctx, Value *counted)
 {
 	return zend_jit_GEP(
@@ -1608,7 +1673,9 @@ static Value* zend_jit_load_reference(zend_llvm_ctx &llvm_ctx, Value *counted)
 			offsetof(zend_reference, val),
 			llvm_ctx.zval_ptr_type);
 }
+/* }}} */
 
+/* {{{ static Value* zend_jit_refcount_addr */
 static Value* zend_jit_refcount_addr(zend_llvm_ctx &llvm_ctx, Value *counted)
 {
 	return zend_jit_GEP(
@@ -1617,7 +1684,9 @@ static Value* zend_jit_refcount_addr(zend_llvm_ctx &llvm_ctx, Value *counted)
 			offsetof(zend_refcounted, refcount),
 			PointerType::getUnqual(Type::getInt32Ty(llvm_ctx.context)));
 }
+/* }}} */
 
+/* {{{ static Value* zend_jit_delref */
 static Value* zend_jit_delref(zend_llvm_ctx &llvm_ctx, Value *counted)
 {
 	Value *refcount_addr = zend_jit_refcount_addr(llvm_ctx, counted);
@@ -1630,7 +1699,9 @@ static Value* zend_jit_delref(zend_llvm_ctx &llvm_ctx, Value *counted)
 		4);
 	return new_val;
 }
+/* }}} */
 
+/* {{{ static Value* zend_jit_addref */
 static Value* zend_jit_addref(zend_llvm_ctx &llvm_ctx, Value *counted)
 {
 	Value *refcount_addr = zend_jit_refcount_addr(llvm_ctx, counted);
@@ -1643,7 +1714,9 @@ static Value* zend_jit_addref(zend_llvm_ctx &llvm_ctx, Value *counted)
 		4);
 	return new_val;
 }
+/* }}} */
 
+/* {{{ static Value* zend_jit_load_obj */
 static Value* zend_jit_load_obj(zend_llvm_ctx &llvm_ctx,
                                 Value         *zval_addr)
 {
@@ -1657,7 +1730,9 @@ static Value* zend_jit_load_obj(zend_llvm_ctx &llvm_ctx,
 					PointerType::getUnqual(
 						Type::LLVM_GET_LONG_TY(llvm_ctx.context)))), 4);
 }
+/* }}} */
 
+/* {{{ static void zend_jit_error */
 static void zend_jit_error(zend_llvm_ctx    &llvm_ctx,
                            int               type,
                            const char       *format,
@@ -1690,7 +1765,9 @@ static void zend_jit_error(zend_llvm_ctx    &llvm_ctx,
 			LLVM_GET_CONST_STRING(format));
 	}
 }
+/* }}} */
 
+/* {{{ static void zend_jit_error_noreturn */
 static void zend_jit_error_noreturn(zend_llvm_ctx    &llvm_ctx,
                                     int               type,
                                     const char       *format,
@@ -1728,7 +1805,9 @@ static void zend_jit_error_noreturn(zend_llvm_ctx    &llvm_ctx,
 	call->doesNotThrow();
 	llvm_ctx.builder.CreateUnreachable();
 }
+/* }}} */
 
+/* {{{ static Value* zend_jit_load_cv */
 static Value* zend_jit_load_cv(zend_llvm_ctx &llvm_ctx,
                                uint32_t       var,
                                uint32_t       info,
@@ -1791,7 +1870,9 @@ static Value* zend_jit_load_cv(zend_llvm_ctx &llvm_ctx,
 	}
 	return zval_addr;
 }
+/* }}} */
 
+/* {{{ static int zend_jit_needs_check_for_this */
 static int zend_jit_needs_check_for_this(zend_llvm_ctx &llvm_ctx,
                                          zend_op       *opline)
 {
@@ -1814,7 +1895,9 @@ static int zend_jit_needs_check_for_this(zend_llvm_ctx &llvm_ctx,
 	}
 	return 0;
 }
+/* }}} */
 
+/* {{{ static Value* zend_jit_deref */
 static Value* zend_jit_deref(zend_llvm_ctx &llvm_ctx,
                              Value         *zval_ptr,
                              uint32_t       info)
@@ -1847,7 +1930,9 @@ static Value* zend_jit_deref(zend_llvm_ctx &llvm_ctx,
 	}
 	return zval_ptr;
 }
+/* }}} */
 
+/* {{{ static Value* zend_jit_load_operand */
 static Value* zend_jit_load_operand(zend_llvm_ctx &llvm_ctx,
                                     zend_uchar     op_type,
                                     znode_op       op,
@@ -1887,7 +1972,9 @@ static Value* zend_jit_load_operand(zend_llvm_ctx &llvm_ctx,
 		ASSERT_NOT_REACHED();
 	}
 }
+/* }}} */
 
+/* {{{ static int zend_jit_should_swap_operands */
 static int zend_jit_should_swap_operands(zend_op_array *op_array, zend_op *opline)
 {
 	/* Prefer constants as the second operand.  */
@@ -1913,12 +2000,14 @@ static int zend_jit_should_swap_operands(zend_op_array *op_array, zend_op *oplin
 	/* Otherwise it doesn't matter.  */
 	return 0;
 }
+/* }}} */
 
 #define SAME_CVs(opline) \
 	(opline->op1_type == IS_CV && \
 	 opline->op2_type == IS_CV && \
 	 opline->op1.var == opline->op2.var)
 
+/* {{{ static int zend_jit_load_operands */
 static int zend_jit_load_operands(zend_llvm_ctx     &llvm_ctx,
                                   zend_op_array     *op_array,
                                   zend_op           *opline,
@@ -1947,6 +2036,7 @@ static int zend_jit_load_operands(zend_llvm_ctx     &llvm_ctx,
 	}
 	return 1;
 }
+/* }}} */
 
 #if ZEND_DEBUG
 static Value* zend_jit_function_name(zend_llvm_ctx &llvm_ctx)
@@ -1958,6 +2048,7 @@ static Value* zend_jit_function_name(zend_llvm_ctx &llvm_ctx)
 }
 #endif
 
+/* {{{ static int zend_jit_zval_dtor_func */
 static int zend_jit_zval_dtor_func(zend_llvm_ctx &llvm_ctx,
                                    Value         *counted,
                                    uint32_t       lineno)
@@ -1994,7 +2085,9 @@ static int zend_jit_zval_dtor_func(zend_llvm_ctx &llvm_ctx,
 
 	return 1;
 }
+/* }}} */
 
+/* {{{ static int zend_jit_gc_possible_root */
 static int zend_jit_gc_possible_root(zend_llvm_ctx &llvm_ctx,
                                      Value         *counted)
 {
@@ -2017,7 +2110,9 @@ static int zend_jit_gc_possible_root(zend_llvm_ctx &llvm_ctx,
 
 	return 1;
 }
+/* }}} */
 
+/* {{{ static int zend_jit_copy_ctor_func */
 static int zend_jit_copy_ctor_func(zend_llvm_ctx &llvm_ctx,
                                    Value         *zval_ptr,
                                    uint32_t       lineno)
@@ -2053,7 +2148,9 @@ static int zend_jit_copy_ctor_func(zend_llvm_ctx &llvm_ctx,
 
 	return 1;
 }
+/* }}} */
 
+/* {{{ static int zend_jit_zval_dtor_ex */
 static int zend_jit_zval_dtor_ex(zend_llvm_ctx &llvm_ctx,
                                  Value         *zval_addr,
                                  Value         *zval_type,
@@ -2088,7 +2185,9 @@ static int zend_jit_zval_dtor_ex(zend_llvm_ctx &llvm_ctx,
 	}
 	return 1;
 }
+/* }}} */
 
+/* {{{ static int zend_jit_zval_dtor_func_for_ptr */
 static int zend_jit_zval_dtor_func_for_ptr(zend_llvm_ctx &llvm_ctx,
                                            Value         *counted,
                                            uint32_t       lineno)
@@ -2125,7 +2224,9 @@ static int zend_jit_zval_dtor_func_for_ptr(zend_llvm_ctx &llvm_ctx,
 
 	return 1;
 }
+/* }}} */
 
+/* {{{ static int zend_jit_zval_ptr_dtor_ex */
 static int zend_jit_zval_ptr_dtor_ex(zend_llvm_ctx &llvm_ctx,
                                      Value         *zval_addr,
                                      Value         *zval_type,
@@ -2174,7 +2275,9 @@ static int zend_jit_zval_ptr_dtor_ex(zend_llvm_ctx &llvm_ctx,
 	}
 	return 1;
 }
+/* }}} */
 
+/* {{{ static int zend_jit_free_operand */
 static int zend_jit_free_operand(zend_llvm_ctx &llvm_ctx,
                                  zend_uchar     op_type,
                                  Value         *zval_addr,
@@ -2194,7 +2297,9 @@ static int zend_jit_free_operand(zend_llvm_ctx &llvm_ctx,
 	}
 	return 1;
 }
+/* }}} */
 
+/* {{{ static Value* zend_jit_is_true */
 static Value* zend_jit_is_true(zend_llvm_ctx &llvm_ctx,
                                Value         *zval_addr)
 {
@@ -2214,7 +2319,9 @@ static Value* zend_jit_is_true(zend_llvm_ctx &llvm_ctx,
 
 	return call;
 }
+/* }}} */
 
+/* {{{ static int zend_jit_jmpznz */
 static int zend_jit_jmpznz(zend_llvm_ctx    &llvm_ctx,
                            zend_op_array    *op_array,
                            zend_op          *opline,
@@ -2338,7 +2445,9 @@ static int zend_jit_jmpznz(zend_llvm_ctx    &llvm_ctx,
 	}
 	return 1;
 }
+/* }}} */
 
+/* {{{ static int zend_jit_math_dispatch */
 static int zend_jit_math_dispatch(zend_llvm_ctx     &llvm_ctx,
                                   Value             *op1_addr,
                                   zend_uchar         op1_op_type,
@@ -2612,7 +2721,9 @@ static int zend_jit_math_dispatch(zend_llvm_ctx     &llvm_ctx,
 
 	return n;
 }
+/* }}} */
 
+/* {{{ static int zend_jit_cmp */
 static int zend_jit_cmp(zend_llvm_ctx    &llvm_ctx,
                         zend_op_array    *op_array,
                         zend_op          *opline,
@@ -3203,7 +3314,9 @@ static int zend_jit_cmp(zend_llvm_ctx    &llvm_ctx,
 
 	return 1;
 }
+/* }}} */
 
+/* {{{ static int zend_jit_math */
 static int zend_jit_math(zend_llvm_ctx    &llvm_ctx,
                          Value            *orig_op1_addr,
                          Value            *op1_addr,
@@ -3775,7 +3888,9 @@ static int zend_jit_math(zend_llvm_ctx    &llvm_ctx,
 
 	return 1;
 }
+/* }}} */
 
+/* {{{ static int zend_jit_long_math */
 static int zend_jit_long_math(zend_llvm_ctx    &llvm_ctx,
                               Value            *orig_op1_addr,
                               Value            *op1_addr,
@@ -4061,7 +4176,9 @@ static int zend_jit_long_math(zend_llvm_ctx    &llvm_ctx,
 
 	return 1;
 }
+/* }}} */
 
+/* {{{ static int zend_jit_math_op */
 static int zend_jit_math_op(zend_llvm_ctx    &llvm_ctx,
                             zend_op_array    *op_array,
                             zend_op          *opline)
@@ -4105,7 +4222,9 @@ static int zend_jit_math_op(zend_llvm_ctx    &llvm_ctx,
 			opline->opcode,
 			opline);
 }
+/* }}} */
 
+/* {{{ static int zend_jit_long_math_op */
 static int zend_jit_long_math_op(zend_llvm_ctx    &llvm_ctx,
                                  zend_op_array    *op_array,
                                  zend_op          *opline)
@@ -4149,7 +4268,9 @@ static int zend_jit_long_math_op(zend_llvm_ctx    &llvm_ctx,
 			opline->opcode,
 			opline);
 }
+/* }}} */
 
+/* {{{ static int zend_jit_bw_not */
 static int zend_jit_bw_not(zend_llvm_ctx    &llvm_ctx,
                            zend_op_array    *op_array,
                            zend_op          *opline)
@@ -4247,7 +4368,9 @@ static int zend_jit_bw_not(zend_llvm_ctx    &llvm_ctx,
 
 	return 1;
 }
+/* }}} */
 
+/* {{{ static int zend_jit_bool */
 static int zend_jit_bool(zend_llvm_ctx    &llvm_ctx,
                          zend_op_array    *op_array,
                          zend_op          *opline,
@@ -4288,7 +4411,9 @@ static int zend_jit_bool(zend_llvm_ctx    &llvm_ctx,
 
 	return 1;
 }
+/* }}} */
 
+/* {{{ static int zend_jit_copy_value */
 static int zend_jit_copy_value(zend_llvm_ctx &llvm_ctx,
                                Value         *to_addr,
                                uint32_t       to_info,
@@ -4339,7 +4464,9 @@ static int zend_jit_copy_value(zend_llvm_ctx &llvm_ctx,
 
 	return 1;
 }
+/* }}} */
 
+/* {{{ static int zend_jit_qm_assign */
 static int zend_jit_qm_assign(zend_llvm_ctx    &llvm_ctx,
                               zend_op_array    *op_array,
                               zend_op          *opline)
@@ -4451,7 +4578,9 @@ static int zend_jit_qm_assign(zend_llvm_ctx    &llvm_ctx,
 	llvm_ctx.valid_opline = 0;
 	return 1;
 }
+/* }}} */
 
+/* {{{ static int zend_jit_assign_to_variable */
 static int zend_jit_assign_to_variable(zend_llvm_ctx    &llvm_ctx,
                                        zend_op_array    *op_array,
                                        Value            *op1_addr,
@@ -4744,7 +4873,9 @@ static int zend_jit_assign_to_variable(zend_llvm_ctx    &llvm_ctx,
 
 	return 1;
 }
+/* }}} */
 
+/* {{{ static int zend_jit_assign */
 static int zend_jit_assign(zend_llvm_ctx    &llvm_ctx,
                            zend_op_array    *op_array,
                            zend_op          *opline)
@@ -4768,7 +4899,7 @@ static int zend_jit_assign(zend_llvm_ctx    &llvm_ctx,
 	orig_op2_addr = zend_jit_load_operand(llvm_ctx, opline->op2_type, opline->op2, OP2_SSA_VAR(), OP2_INFO(), 0, opline);
 
 	if (opline->op1_type == IS_VAR && OP1_MAY_BE(MAY_BE_ERROR)) {
-		// JIT: if (OP1_TYPE == IS_VAR && UNEXPECTED(variable_ptr == &EG(error_zval))) {
+		// JIT: if (OP1_TYPE == IS_VAR && UNEXPECTED(variable_ptr == &EG(error_zval)))
 		BasicBlock *bb_error = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 		BasicBlock *bb_follow = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 		bb_finish = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
@@ -4826,7 +4957,27 @@ static int zend_jit_assign(zend_llvm_ctx    &llvm_ctx,
 	llvm_ctx.valid_opline = 0;
 	return 1;
 }
+/* }}} */
 
+/* {{{ static int zend_jit_add_string */
+static int zend_jit_add_string(zend_llvm_ctx    &llvm_ctx,
+                               zend_op_array    *op_array,
+                               zend_op          *opline)
+{
+	Value *op1_addr = NULL;
+	Value *result_addr = zend_jit_load_var(llvm_ctx, opline->result.var);
+
+	if (opline->op1_type == IS_UNUSED) {
+		op1_addr = zend_jit_load_slot(llvm_ctx, opline->op1.var);
+	} else if (opline->op1_type == IS_TMP_VAR) {
+		op1_addr = zend_jit_load_slot(llvm_ctx, opline->op1.var);
+	} else {
+		ASSERT_NOT_REACHED();
+	}
+}
+/* }}} */
+
+/* {{{ static int zend_jit_codegen_ex */
 static int zend_jit_codegen_ex(zend_jit_context *ctx, 
                                zend_llvm_ctx    &llvm_ctx,
                                zend_op_array    *op_array)
@@ -5017,9 +5168,9 @@ static int zend_jit_codegen_ex(zend_jit_context *ctx,
 					zend_jit_bool(llvm_ctx, op_array, opline, 0);
 					llvm_ctx.valid_opline = 0;
 					break;
+				case ZEND_ADD_CHAR:
 //???
 #if 0
-				case ZEND_ADD_CHAR:
 					if (!zend_jit_add_string(llvm_ctx, ctx, op_array, opline)) return 0;
 					break;
 				case ZEND_ADD_STRING:
@@ -5323,7 +5474,9 @@ static int zend_jit_codegen_ex(zend_jit_context *ctx,
 
 	return 1;
 }
+/* }}} */
 
+/* {{{ static int zend_jit_codegen_start_module */
 static int zend_jit_codegen_start_module(zend_jit_context *ctx, zend_op_array *op_array TSRMLS_DC)
 {
 	zend_llvm_ctx *ptr = new zend_llvm_ctx(getGlobalContext());
@@ -5568,7 +5721,9 @@ static int zend_jit_codegen_start_module(zend_jit_context *ctx, zend_op_array *o
 
 	return SUCCESS;
 }
+/* }}} */
 
+/* {{{ static int zend_jit_codegen_end_module */
 static int zend_jit_codegen_end_module(zend_jit_context *ctx, zend_op_array *op_array TSRMLS_DC)
 {
 	zend_llvm_ctx &llvm_ctx = *(zend_llvm_ctx*)ctx->codegen_ctx;
@@ -5634,9 +5789,11 @@ static int zend_jit_codegen_end_module(zend_jit_context *ctx, zend_op_array *op_
 
 	return SUCCESS;
 }
+/* }}} */
 
 /* PUBLIC API */
 
+/* {{{ int zend_opline_supports_jit */
 int zend_opline_supports_jit(zend_op_array    *op_array,
                              zend_op          *opline)
 {
@@ -5744,7 +5901,9 @@ int zend_opline_supports_jit(zend_op_array    *op_array,
 	}
 	return 0;
 }
+/* }}} */
 
+/* {{{ int zend_jit_codegen_may_compile */
 int zend_jit_codegen_may_compile(zend_op_array *op_array TSRMLS_DC)
 {
 	if (op_array->fn_flags & ZEND_ACC_GENERATOR) {
@@ -5758,7 +5917,9 @@ int zend_jit_codegen_may_compile(zend_op_array *op_array TSRMLS_DC)
 
 	return 1;
 }
+/* }}} */
 
+/* {{{ int zend_jit_codegen_start_script */
 int zend_jit_codegen_start_script(zend_jit_context *ctx TSRMLS_DC)
 {
 	mprotect(asm_buf, asm_buf->end - (zend_uchar*)asm_buf, PROT_READ | PROT_WRITE);
@@ -5768,7 +5929,9 @@ int zend_jit_codegen_start_script(zend_jit_context *ctx TSRMLS_DC)
 		return SUCCESS;
 	}
 }
+/* }}} */
 
+/* {{{ int zend_jit_codegen_end_script */
 int zend_jit_codegen_end_script(zend_jit_context *ctx TSRMLS_DC)
 {
 	int ret;
@@ -5784,7 +5947,9 @@ int zend_jit_codegen_end_script(zend_jit_context *ctx TSRMLS_DC)
 	mprotect(asm_buf, asm_buf->end - (zend_uchar*)asm_buf, PROT_READ | PROT_EXEC);
 	return ret;
 }
+/* }}} */
 
+/* {{{ int zend_jit_codegen */
 int zend_jit_codegen(zend_jit_context *ctx, zend_op_array *op_array TSRMLS_DC)
 {
 	if (op_array->fn_flags & ZEND_ACC_GENERATOR) {
@@ -5934,7 +6099,9 @@ int zend_jit_codegen(zend_jit_context *ctx, zend_op_array *op_array TSRMLS_DC)
 	zend_arena_release(&ctx->arena, checkpoint);
 	return SUCCESS;
 }
+/* }}} */
 
+/* {{{ int zend_jit_codegen_startup */
 int zend_jit_codegen_startup(size_t size)
 {
 #ifdef _WIN32
@@ -5988,7 +6155,9 @@ int zend_jit_codegen_startup(size_t size)
 
 	return SUCCESS;
 }
+/* }}} */
 
+/* {{{ int zend_jit_codegen_shutdown */
 int zend_jit_codegen_shutdown(void)
 {
 //???	zend_hash_destroy(&inline_functions);
@@ -6016,6 +6185,7 @@ int zend_jit_codegen_shutdown(void)
 
 	return SUCCESS;
 }
+/* }}} */
 
 #ifdef __cplusplus
 }
