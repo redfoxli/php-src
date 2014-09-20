@@ -31,6 +31,10 @@
 #include "jit/zend_jit_config.h"
 #include "jit/zend_jit_helpers.h"
 
+ZEND_FASTCALL zend_string* zend_jit_helper_string_realloc(zend_string *str, size_t len, int persistent) {
+	return zend_string_realloc(str, len, persistent);
+}
+
 /*
  * Local variables:
  * tab-width: 4

@@ -23,7 +23,7 @@
 #include "jit/zend_jit_config.h"
 #include "jit/zend_jit_context.h"
 #include "jit/zend_jit_codegen.h"
-//???#include "jit/zend_jit_helpers.h"
+#include "jit/zend_jit_helpers.h"
 #include "jit/zend_worklist.h"
 
 #define ZEND_LLVM_DEBUG                0x0303
@@ -1640,7 +1640,14 @@ static int zend_jit_save_zval_str(zend_llvm_ctx &llvm_ctx,
                                   Value         *zval_addr,
                                   Value         *str_addr)
 {
-	zend_jit_save_zval_ptr(llvm_ctx, zval_addr, str_addr);
+	llvm_ctx.builder.CreateAlignedStore(
+		str_addr,
+		zend_jit_GEP(
+			llvm_ctx,
+			zval_addr,
+			offsetof(zval, value.ptr),
+			PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_string_type))),
+		4);
 	zend_jit_save_zval_type_info(llvm_ctx, zval_addr, llvm_ctx.builder.getInt32(IS_STRING_EX));
 	return 1;
 }
@@ -1778,14 +1785,12 @@ static Value* zend_jit_load_str(zend_llvm_ctx &llvm_ctx,
 static Value* zend_jit_load_str_val(zend_llvm_ctx &llvm_ctx,
                                     Value         *str)
 {
-	return llvm_ctx.builder.CreateAlignedLoad(
-			zend_jit_GEP(
-				llvm_ctx,
-				str,
-				offsetof(zend_string, val),
-				PointerType::getUnqual(
-					PointerType::getUnqual(
-						Type::getInt8Ty(llvm_ctx.context)))), 4);
+	return zend_jit_GEP(
+			llvm_ctx,
+			str,
+			offsetof(zend_string, val),
+			PointerType::getUnqual(
+				Type::getInt8Ty(llvm_ctx.context)));
 }
 /* }}} */
 
@@ -1894,6 +1899,7 @@ static void zend_jit_error_noreturn(zend_llvm_ctx    &llvm_ctx,
 }
 /* }}} */
 
+/* {{{ static Value* zend_jit_str_realloc */
 static Value* zend_jit_str_realloc(zend_llvm_ctx    &llvm_ctx,
                                    Value            *str_addr,
                                    Value            *new_len,
@@ -1901,10 +1907,10 @@ static Value* zend_jit_str_realloc(zend_llvm_ctx    &llvm_ctx,
 {
 	Function *_helper = zend_jit_get_helper(
 			llvm_ctx,
-			(void*)zend_string_realloc,
-			ZEND_JIT_SYM("zend_string_realloc"),
+			(void*)zend_jit_helper_string_realloc,
+			ZEND_JIT_SYM("zend_jit_helper_string_realloc"),
 //??? NOALIAS?
-			0,
+			ZEND_JIT_HELPER_FAST_CALL,
 			PointerType::getUnqual(llvm_ctx.zend_string_type),
 //??? Int32 -> ???
 			PointerType::getUnqual(llvm_ctx.zend_string_type),
@@ -1920,6 +1926,7 @@ static Value* zend_jit_str_realloc(zend_llvm_ctx    &llvm_ctx,
 
 	return call;
 }
+/* }}} */
 
 /* {{{ static Value* zend_jit_load_cv */
 static Value* zend_jit_load_cv(zend_llvm_ctx &llvm_ctx,
@@ -2440,28 +2447,27 @@ static Value* zend_jit_is_true(zend_llvm_ctx &llvm_ctx,
 /* {{{ static void zend_jit_add_char_to_string */
 static void zend_jit_add_char_to_string(zend_llvm_ctx    &llvm_ctx,
                                         Value            *op1,
-                                        Value            *op2,
+										char              c,
                                         zend_op          *opline)
 {
+	Value *op1_val, *result_len;
 	Value *op1_str = zend_jit_load_str(llvm_ctx, op1);
-	Value *op2_str = zend_jit_load_str(llvm_ctx, op2);
 	Value *op1_len = zend_jit_load_str_len(llvm_ctx, op1_str);
-	Value *op2_val = zend_jit_load_str_val(llvm_ctx, op2);
 
-	op1_str = zend_jit_str_realloc(llvm_ctx, op1_str,
-			llvm_ctx.builder.CreateAdd(op1_len, llvm_ctx.builder.LLVM_GET_LONG(1)));
+	result_len = llvm_ctx.builder.CreateAdd(op1_len, llvm_ctx.builder.LLVM_GET_LONG(1));
+	op1_str = zend_jit_str_realloc(llvm_ctx, op1_str, result_len);
+	op1_val = zend_jit_load_str_val(llvm_ctx, op1_str);
 
 	//JIT: buf->val[length - 1] = (char) Z_LVAL_P(op2);
 	llvm_ctx.builder.CreateAlignedStore(
-			llvm_ctx.builder.CreateAlignedLoad(op2_val, 1),
-				llvm_ctx.builder.CreateGEP(op1_str, op1_len), 1);
+			llvm_ctx.builder.getInt8(c),
+				llvm_ctx.builder.CreateGEP(op1_val, op1_len), 1);
 
 	//JIT: buf->val[length] = 0;
 	llvm_ctx.builder.CreateAlignedStore(
 			llvm_ctx.builder.getInt8(0),
-				llvm_ctx.builder.CreateGEP(op1_str,
-					llvm_ctx.builder.CreateAdd(op1_len, llvm_ctx.builder.LLVM_GET_LONG(1))), 1);
-	
+				llvm_ctx.builder.CreateGEP(op1_val, result_len), 1);
+
 	//JIT: ZVAL_NEW_STR(result, buf);
 	zend_jit_save_zval_str(llvm_ctx, op1, op1_str);
 	return;
@@ -5109,10 +5115,10 @@ static int zend_jit_assign(zend_llvm_ctx    &llvm_ctx,
 }
 /* }}} */
 
-/* {{{ static int zend_jit_add_string */
-static int zend_jit_add_string(zend_llvm_ctx    &llvm_ctx,
-                               zend_op_array    *op_array,
-                               zend_op          *opline)
+/* {{{ static int zend_jit_add_char */
+static int zend_jit_add_char(zend_llvm_ctx    &llvm_ctx,
+                             zend_op_array    *op_array,
+                             zend_op          *opline)
 {
 	Value *op1_addr = NULL;
 	Value *result_addr = zend_jit_load_var(llvm_ctx, opline->result.var);
@@ -5122,7 +5128,7 @@ static int zend_jit_add_string(zend_llvm_ctx    &llvm_ctx,
 		zend_jit_empty_str(llvm_ctx, op1_addr);
 	}
 
-	zend_jit_add_char_to_string(llvm_ctx, op1_addr, zend_jit_load_slot(llvm_ctx, opline->op2.var), opline);
+	zend_jit_add_char_to_string(llvm_ctx, op1_addr, (char)Z_LVAL_P(opline->op2.zv), opline);
 
 	llvm_ctx.valid_opline = 0;
 	return 1;
@@ -5321,7 +5327,7 @@ static int zend_jit_codegen_ex(zend_jit_context *ctx,
 					llvm_ctx.valid_opline = 0;
 					break;
 				case ZEND_ADD_CHAR:
-					if (!zend_jit_add_string(llvm_ctx, op_array, opline)) return 0;
+					if (!zend_jit_add_char(llvm_ctx, op_array, opline)) return 0;
 					break;
 //???
 #if 0
