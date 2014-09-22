@@ -1923,15 +1923,15 @@ static Value* zend_jit_str_realloc(zend_llvm_ctx    &llvm_ctx,
 //??? Int32 -> ???
 			PointerType::getUnqual(llvm_ctx.zend_string_type),
 			LLVM_GET_LONG_TY(llvm_ctx.context),
-			LLVM_GET_LONG_TY(llvm_ctx.context),
+			Type::getInt32Ty(llvm_ctx.context),
 			NULL,
 			NULL);
 
 	CallInst *call = llvm_ctx.builder.CreateCall3(_helper,
 			str_addr,
 		   	new_len,
-			LLVM_GET_LONG(persistent));
-
+			llvm_ctx.builder.getInt32(persistent));
+	call->setCallingConv(CallingConv::X86_FastCall);
 	return call;
 }
 /* }}} */
