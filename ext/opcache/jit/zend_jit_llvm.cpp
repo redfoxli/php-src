@@ -1470,35 +1470,6 @@ static void zend_jit_locale_sprintf_double(zend_llvm_ctx &llvm_ctx,
 }
 /* }}} */
 
-/* {{{ static Value* zend_jit_str_realloc */
-static Value* zend_jit_str_realloc(zend_llvm_ctx    &llvm_ctx,
-                                   Value            *str_addr,
-                                   Value            *new_len,
-                                   int               persistent = 0)
-{
-	Function *_helper = zend_jit_get_helper(
-			llvm_ctx,
-			(void*)zend_jit_helper_string_realloc,
-			ZEND_JIT_SYM("zend_jit_helper_string_realloc"),
-//??? NOALIAS?
-			ZEND_JIT_HELPER_FAST_CALL,
-			PointerType::getUnqual(llvm_ctx.zend_string_type),
-//??? Int32 -> ???
-			PointerType::getUnqual(llvm_ctx.zend_string_type),
-			LLVM_GET_LONG_TY(llvm_ctx.context),
-			LLVM_GET_LONG_TY(llvm_ctx.context),
-			NULL,
-			NULL);
-
-	CallInst *call = llvm_ctx.builder.CreateCall3(_helper,
-			str_addr,
-		   	new_len,
-			LLVM_GET_LONG(persistent));
-
-	return call;
-}
-/* }}} */
-
 /* {{{ static int zend_jit_zval_dtor_func */
 static int zend_jit_zval_dtor_func(zend_llvm_ctx &llvm_ctx,
                                    Value         *counted,
@@ -1692,6 +1663,117 @@ static Value* zend_jit_strpprintf(zend_llvm_ctx    &llvm_ctx,
 	}
 
 	return llvm_ctx.builder.CreateCall(_helper, params);
+}
+/* }}} */
+
+/* {{{ static Value* zend_jit_str_realloc */
+static Value* zend_jit_str_realloc(zend_llvm_ctx    &llvm_ctx,
+                                   Value            *str_addr,
+                                   Value            *new_len,
+                                   int               persistent = 0)
+{
+	Function *_helper = zend_jit_get_helper(
+			llvm_ctx,
+			(void*)zend_jit_helper_string_realloc,
+			ZEND_JIT_SYM("zend_jit_helper_string_realloc"),
+//??? NOALIAS?
+			ZEND_JIT_HELPER_FAST_CALL,
+			PointerType::getUnqual(llvm_ctx.zend_string_type),
+//??? Int32 -> ???
+			PointerType::getUnqual(llvm_ctx.zend_string_type),
+			LLVM_GET_LONG_TY(llvm_ctx.context),
+			Type::getInt32Ty(llvm_ctx.context),
+			NULL,
+			NULL);
+
+	CallInst *call = llvm_ctx.builder.CreateCall3(_helper,
+			str_addr,
+		   	new_len,
+			llvm_ctx.builder.getInt32(persistent));
+	call->setCallingConv(CallingConv::X86_FastCall);
+	return call;
+#if 0
+	int may_be_interned = 1;
+	zend_op *op = opline;
+
+	while (op > llvm_ctx.op_array->opcodes) {
+		op--;
+		if (op->result_type == IS_TMP_VAR && 
+		    op->result.var == opline->result.var) {
+			if (op->opcode == ZEND_ADD_VAR ||
+			    op->opcode == ZEND_ADD_STRING) {
+			    may_be_interned = (op->op1_type == IS_UNUSED);
+			} else if (op->opcode == ZEND_ADD_CHAR) {
+				may_be_interned = 0;
+			} else if (op->opcode == ZEND_CONCAT) {
+				may_be_interned = 0;
+			} else {
+				may_be_interned = 1;
+			}
+		    break;
+		}
+	}
+
+	BasicBlock *bb_interned = NULL;
+	BasicBlock *bb_not_interned = NULL;
+	BasicBlock *bb_common = NULL;
+	Value *str1 = NULL;
+
+	if (may_be_interned) {
+		bb_interned = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+		bb_not_interned = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+		bb_common = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+
+		// JIT: if (IS_INTERNED(Z_STRVAL_P(op1))) {
+		zend_jit_is_interned(llvm_ctx, src_str, bb_interned, bb_not_interned);
+
+		llvm_ctx.builder.SetInsertPoint(bb_interned);
+		// JIT: buf = (char *) emalloc(length+1);
+		str1 = llvm_ctx.builder.CreateBitCast(
+				zend_jit_emalloc(llvm_ctx,
+					llvm_ctx.builder.CreateZExt(
+					llvm_ctx.builder.CreateAdd(
+						len,
+						llvm_ctx.builder.getInt32(1)),
+					Type::LLVM_GET_LONG_TY(llvm_ctx.context)),
+				opline->lineno),
+			PointerType::getUnqual(Type::getInt8Ty(llvm_ctx.context)));
+		// JIT: memcpy(buf, Z_STRVAL_P(op1), Z_STRLEN_P(op1));
+		llvm_ctx.builder.CreateMemCpy(str1, src_str, src_len, 1);
+		llvm_ctx.builder.CreateBr(bb_common);
+
+		llvm_ctx.builder.SetInsertPoint(bb_not_interned);
+	}
+
+	// TODO JIT: buf = (char *) erealloc(Z_STRVAL_P(op1), length+1);
+	Value *str = llvm_ctx.builder.CreateBitCast(
+			zend_jit_erealloc(llvm_ctx,
+				src_str,
+				llvm_ctx.builder.CreateZExt(
+					llvm_ctx.builder.CreateAdd(
+						len,
+						llvm_ctx.builder.getInt32(1)),
+					Type::LLVM_GET_LONG_TY(llvm_ctx.context)),
+				opline->lineno),
+			PointerType::getUnqual(Type::getInt8Ty(llvm_ctx.context)));
+
+
+	if (may_be_interned) {
+		llvm_ctx.builder.CreateBr(bb_common);
+		llvm_ctx.builder.SetInsertPoint(bb_common);
+		PHINode *ret = llvm_ctx.builder.CreatePHI(PointerType::getUnqual(Type::getInt8Ty(llvm_ctx.context)), 2);
+		ret->addIncoming(str1, bb_interned);
+		ret->addIncoming(str, bb_not_interned);
+		return ret;
+	} else {
+		call = llvm_ctx.builder.CreateCall2(_helper,
+			llvm_ctx.builder.getInt32(type),
+			LLVM_GET_CONST_STRING(format));
+	}
+	call->setDoesNotReturn();
+	call->doesNotThrow();
+	llvm_ctx.builder.CreateUnreachable();
+#endif
 }
 /* }}} */
 
@@ -2196,92 +2278,6 @@ static Value* zend_jit_load_obj(zend_llvm_ctx &llvm_ctx,
 						LLVM_GET_LONG_TY(llvm_ctx.context)))), 4);
 }
 /* }}} */
-
-#if 0
-/* {{{ static Value* zend_jit_string_alloc */
-static Value* zend_jit_string_alloc(zend_llvm_ctx    &llvm_ctx,
-                                    Value            *str,
-                                    Value            *len,
-                                    zend_op          *opline)
-{	
-	int may_be_interned = 1;
-	zend_op *op = opline;
-
-	while (op > llvm_ctx.op_array->opcodes) {
-		op--;
-		if (op->result_type == IS_TMP_VAR && 
-		    op->result.var == opline->result.var) {
-			if (op->opcode == ZEND_ADD_VAR ||
-			    op->opcode == ZEND_ADD_STRING) {
-			    may_be_interned = (op->op1_type == IS_UNUSED);
-			} else if (op->opcode == ZEND_ADD_CHAR) {
-				may_be_interned = 0;
-			} else if (op->opcode == ZEND_CONCAT) {
-				may_be_interned = 0;
-			} else {
-				may_be_interned = 1;
-			}
-		    break;
-		}
-	}
-
-	BasicBlock *bb_interned = NULL;
-	BasicBlock *bb_not_interned = NULL;
-	BasicBlock *bb_common = NULL;
-	Value *str1 = NULL;
-
-	if (may_be_interned) {
-		bb_interned = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
-		bb_not_interned = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
-		bb_common = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
-
-		// JIT: if (IS_INTERNED(Z_STRVAL_P(op1))) {
-		zend_jit_is_interned(llvm_ctx, src_str, bb_interned, bb_not_interned);
-
-		llvm_ctx.builder.SetInsertPoint(bb_interned);
-		// JIT: buf = (char *) emalloc(length+1);
-		str1 = llvm_ctx.builder.CreateBitCast(
-				zend_jit_emalloc(llvm_ctx,
-					llvm_ctx.builder.CreateZExt(
-					llvm_ctx.builder.CreateAdd(
-						len,
-						llvm_ctx.builder.getInt32(1)),
-					Type::LLVM_GET_LONG_TY(llvm_ctx.context)),
-				opline->lineno),
-			PointerType::getUnqual(Type::getInt8Ty(llvm_ctx.context)));
-		// JIT: memcpy(buf, Z_STRVAL_P(op1), Z_STRLEN_P(op1));
-		llvm_ctx.builder.CreateMemCpy(str1, src_str, src_len, 1);
-		llvm_ctx.builder.CreateBr(bb_common);
-
-		llvm_ctx.builder.SetInsertPoint(bb_not_interned);
-	}
-
-	// TODO JIT: buf = (char *) erealloc(Z_STRVAL_P(op1), length+1);
-	Value *str = llvm_ctx.builder.CreateBitCast(
-			zend_jit_erealloc(llvm_ctx,
-				src_str,
-				llvm_ctx.builder.CreateZExt(
-					llvm_ctx.builder.CreateAdd(
-						len,
-						llvm_ctx.builder.getInt32(1)),
-					Type::LLVM_GET_LONG_TY(llvm_ctx.context)),
-				opline->lineno),
-			PointerType::getUnqual(Type::getInt8Ty(llvm_ctx.context)));
-
-
-	if (may_be_interned) {
-		llvm_ctx.builder.CreateBr(bb_common);
-		llvm_ctx.builder.SetInsertPoint(bb_common);
-		PHINode *ret = llvm_ctx.builder.CreatePHI(PointerType::getUnqual(Type::getInt8Ty(llvm_ctx.context)), 2);
-		ret->addIncoming(str1, bb_interned);
-		ret->addIncoming(str, bb_not_interned);
-		return ret;
-	} else {
-		return str;
-	}
-}
-/* }}} */
-#endif
 
 /* {{{ static Value* zend_jit_load_cv */
 static Value* zend_jit_load_cv(zend_llvm_ctx &llvm_ctx,
