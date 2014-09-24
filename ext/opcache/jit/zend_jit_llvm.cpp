@@ -601,6 +601,18 @@ static int zend_jit_unum(void)
 	return n;
 }
 
+#if ZEND_DEBUG
+/* {{{ static Value* zend_jit_function_name */
+static Value* zend_jit_function_name(zend_llvm_ctx &llvm_ctx)
+{
+	if (!llvm_ctx.function_name) {
+		llvm_ctx.function_name = llvm_ctx.builder.CreateGlobalStringPtr(llvm_ctx.function->getName());
+	}
+	return llvm_ctx.function_name;
+}
+/* }}} */
+#endif
+
 /* {{{ static const char* zend_jit_func_name */
 static const char* zend_jit_func_name(zend_jit_context   *ctx,
                                       zend_op_array      *op_array,
@@ -2509,18 +2521,6 @@ static int zend_jit_load_operands(zend_llvm_ctx     &llvm_ctx,
 	return 1;
 }
 /* }}} */
-
-#if ZEND_DEBUG
-/* {{{ static Value* zend_jit_function_name */
-static Value* zend_jit_function_name(zend_llvm_ctx &llvm_ctx)
-{
-	if (!llvm_ctx.function_name) {
-		llvm_ctx.function_name = llvm_ctx.builder.CreateGlobalStringPtr(llvm_ctx.function->getName());
-	}
-	return llvm_ctx.function_name;
-}
-/* }}} */
-#endif
 
 /* {{{ static int zend_jit_zval_dtor_ex */
 static int zend_jit_zval_dtor_ex(zend_llvm_ctx &llvm_ctx,
