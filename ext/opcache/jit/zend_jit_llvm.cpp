@@ -6433,7 +6433,6 @@ int zend_opline_supports_jit(zend_op_array    *op_array,
 		case ZEND_ECHO:
 		case ZEND_PRINT:
 		case ZEND_FREE:
-		case ZEND_SWITCH_FREE:
 		case ZEND_INIT_ARRAY:
 		case ZEND_ADD_ARRAY_ELEMENT:
 		case ZEND_FE_FETCH:
