@@ -2620,13 +2620,8 @@ static int zend_jit_free_operand(zend_llvm_ctx &llvm_ctx,
                                  // FIXME: it may be not safe to avoid GC check
                                  bool           check_gc = false)
 {
-	if (op_type == IS_VAR) {
-//???		if (info & MAY_BE_TMP_ZVAL) {
-//???			return zend_jit_zval_dtor_ex(llvm_ctx, zval_addr, zval_type, info, lineno);
-//???		}
+	if (op_type == IS_VAR || op_type == IS_TMP_VAR) {
 		return zend_jit_zval_ptr_dtor_ex(llvm_ctx, zval_addr, zval_type, info, lineno, check_gc);
-	} else if (op_type == IS_TMP_VAR) {
-		return zend_jit_zval_dtor_ex(llvm_ctx, zval_addr, zval_type, info, lineno);
 	}
 	return 1;
 }
@@ -5250,17 +5245,17 @@ static int zend_jit_assign_to_variable(zend_llvm_ctx    &llvm_ctx,
 		//JIT: garbage = Z_COUNTED_P(variable_ptr);
 		Value *garbage = zend_jit_load_counted(llvm_ctx, op1_addr);
 
+		//JIT: if (--GC_REFCOUNT(garbage) == 0) {
+		Value *refcount = zend_jit_delref(llvm_ctx, garbage);
 		BasicBlock *bb_rcn = NULL;
 		if (op1_info & (MAY_BE_RC1|MAY_BE_REF)) {
 			if (op1_info & (MAY_BE_RCN|MAY_BE_REF)) {
-				//JIT:	if (GC_REFCOUNT(garbage) == 1) {
 				BasicBlock *bb_rc1 = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 				bb_rcn = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 				zend_jit_unexpected_br(llvm_ctx,
 					llvm_ctx.builder.CreateICmpEQ(
-						llvm_ctx.builder.CreateAlignedLoad(
-							zend_jit_refcount_addr(llvm_ctx, garbage), 4),
-						llvm_ctx.builder.getInt32(1)),
+						refcount,
+						llvm_ctx.builder.getInt32(0)),
 					bb_rc1,
 					bb_rcn);
 					llvm_ctx.builder.SetInsertPoint(bb_rc1);
@@ -5300,8 +5295,8 @@ static int zend_jit_assign_to_variable(zend_llvm_ctx    &llvm_ctx,
 					}
 				}
 			}
-			// JIT: _zval_dtor_func(garbage ZEND_FILE_LINE_CC);
-			zend_jit_zval_dtor_func(llvm_ctx, garbage, opline->lineno);
+			// JIT: _zval_dtor_func_for_ptr(garbage ZEND_FILE_LINE_CC);
+			zend_jit_zval_dtor_func_for_ptr(llvm_ctx, garbage, opline->lineno);
 			// JIT: return variable_ptr;
 			if (!bb_return) {
 				bb_return = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
@@ -5313,8 +5308,6 @@ static int zend_jit_assign_to_variable(zend_llvm_ctx    &llvm_ctx,
 			if (bb_rcn) {
 				llvm_ctx.builder.SetInsertPoint(bb_rcn);
 			}
-			//JIT: GC_REFCOUNT(garbage)--;
-			zend_jit_delref(llvm_ctx, garbage);
 			if (op1_info & (MAY_BE_ARRAY|MAY_BE_OBJECT)) {
 				//JIT: if ((Z_COLLECTABLE_P(variable_ptr))
 				bb_follow = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
@@ -5482,6 +5475,7 @@ static int zend_jit_assign(zend_llvm_ctx    &llvm_ctx,
 	}
 
 	if (opline->op2_type == IS_VAR || opline->op2_type == IS_CV) {
+		// TODO: deref for IS_CV mau be optimized
 		op2_addr = zend_jit_deref(llvm_ctx, orig_op2_addr, OP2_INFO());
 	} else {
 		op2_addr = orig_op2_addr;
@@ -5504,7 +5498,6 @@ static int zend_jit_assign(zend_llvm_ctx    &llvm_ctx,
 		opline->op2,
 		opline);
 
-	if (!zend_jit_free_operand(llvm_ctx, opline->op1_type, op1_addr, NULL, OP1_INFO(), opline->lineno)) return 0;
 	if (opline->op2_type == IS_VAR) {
 		if (!zend_jit_free_operand(llvm_ctx, opline->op2_type, orig_op2_addr, NULL, OP2_INFO(), opline->lineno)) return 0;
 	}
