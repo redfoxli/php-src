@@ -5422,6 +5422,11 @@ static int zend_jit_assign_to_variable(zend_llvm_ctx    &llvm_ctx,
 	op1_type_info = zend_jit_load_type_info_c(llvm_ctx, op1_addr, op1_type, op1, op1_info);
 	op2_type_info = zend_jit_load_type_info_c(llvm_ctx, op2_addr, op2_type, op2, op2_info);
 
+	/* op1 may by IS_UNDEFINED */
+	if ((op1_info & MAY_BE_UNDEF) && ((op1_info & MAY_BE_ANY) == MAY_BE_NULL)) {
+		op1_info &= ~MAY_BE_NULL;
+	}
+
 	if (op1_info & (MAY_BE_STRING | MAY_BE_ARRAY | MAY_BE_OBJECT | MAY_BE_RESOURCE | MAY_BE_REF)) {
 		if (op1_info & (MAY_BE_ANY - (MAY_BE_OBJECT | MAY_BE_RESOURCE))) {
 			//JIT: if (UNEXPECTED(Z_REFCOUNTED_P(variable_ptr))) {	
