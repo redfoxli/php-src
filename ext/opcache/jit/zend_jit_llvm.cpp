@@ -2040,6 +2040,35 @@ static int zend_jit_save_zval_lval(zend_llvm_ctx &llvm_ctx,
 }
 /* }}} */
 
+/* {{{ static int zend_jit_save_zval_lval */
+static int zend_jit_save_zval_value(zend_llvm_ctx &llvm_ctx,
+                                    Value       *zval_addr,
+                                    Value       *val1,
+                                    Value       *val2)
+{
+	// - 1st store is sizeof(long) width at offset 0
+	// - 2nd store is sizeof(long) width at offset (0 + sizeof(long)).
+	llvm_ctx.builder.CreateAlignedStore(
+		val1,
+		zend_jit_GEP(
+			llvm_ctx,
+			zval_addr,
+			offsetof(zval,value),
+			PointerType::getUnqual(Type::LLVM_GET_LONG_TY(llvm_ctx.context))),
+		4);
+	llvm_ctx.builder.CreateAlignedStore(
+		val2,
+		zend_jit_GEP(
+			llvm_ctx,
+			zval_addr,
+			offsetof(zval,value) + sizeof(long),
+			PointerType::getUnqual(Type::LLVM_GET_LONG_TY(llvm_ctx.context))),
+		4);
+	return 1;
+}
+/* }}} */
+
+
 /* {{{ static int zend_jit_save_zval_ptr */
 static int zend_jit_save_zval_ptr(zend_llvm_ctx &llvm_ctx,
                                   Value       *zval_addr,
@@ -2292,6 +2321,206 @@ static Value* zend_jit_load_obj(zend_llvm_ctx &llvm_ctx,
 }
 /* }}} */
 
+/* {{{ static int zend_jit_qm_assign */
+static int zend_jit_try_addref(zend_llvm_ctx    &llvm_ctx,
+                               Value            *val,
+                               Value            *type_info,
+                               zend_uchar        op_type,
+                               znode_op          op,
+                               uint32_t          info)
+{
+	if (info & (MAY_BE_STRING|MAY_BE_ARRAY|MAY_BE_OBJECT|MAY_BE_RESOURCE)) {
+		BasicBlock *bb_rc = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+		BasicBlock *bb_norc = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+		if (!type_info) {
+			type_info = zend_jit_load_type_info_c(llvm_ctx, val, op_type, op, info);
+		}
+		zend_jit_expected_br(llvm_ctx,
+			llvm_ctx.builder.CreateICmpNE(
+				llvm_ctx.builder.CreateAnd(
+					type_info,
+					llvm_ctx.builder.getInt32(IS_TYPE_REFCOUNTED << Z_TYPE_FLAGS_SHIFT)),
+			llvm_ctx.builder.getInt32(0)),
+			bb_rc,
+			bb_norc);
+		llvm_ctx.builder.SetInsertPoint(bb_rc);
+		zend_jit_addref(llvm_ctx,
+			zend_jit_load_counted(llvm_ctx, val));
+		llvm_ctx.builder.CreateBr(bb_norc);
+		llvm_ctx.builder.SetInsertPoint(bb_norc);
+	}
+	return 1;
+}
+/* }}} */
+
+/* {{{ static int zend_jit_zval_copy_ctor */
+static int zend_jit_zval_copy_ctor(zend_llvm_ctx &llvm_ctx,
+                                   Value         *zval_addr,
+                                   Value         *type_info,
+                                   zend_uchar     op_type,
+                                   znode_op       op,
+                                   uint32_t       info,
+                                   zend_op       *opline)
+{
+	if (!type_info) {
+		type_info = zend_jit_load_type_info_c(llvm_ctx, zval_addr, op_type, op, info);
+	}
+
+	if (info & (MAY_BE_STRING|MAY_BE_ARRAY|MAY_BE_OBJECT|MAY_BE_RESOURCE|MAY_BE_REF)) {
+		BasicBlock *bb_end = NULL;
+
+		if (info & (MAY_BE_ANY - (MAY_BE_ARRAY|MAY_BE_OBJECT|MAY_BE_RESOURCE))) {
+			//JIT: if (Z_OPT_REFCOUNTED_P(zvalue) || Z_OPT_IMMUTABLE_P(zvalue)) {
+			BasicBlock *bb_copy = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+			bb_end = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+			zend_jit_unexpected_br(llvm_ctx,
+				llvm_ctx.builder.CreateICmpNE(
+					llvm_ctx.builder.CreateAnd(
+						type_info,
+						llvm_ctx.builder.getInt32((IS_TYPE_IMMUTABLE | IS_TYPE_REFCOUNTED) << Z_TYPE_FLAGS_SHIFT)),
+					llvm_ctx.builder.getInt32(0)),
+				bb_copy,
+				bb_end);
+			llvm_ctx.builder.SetInsertPoint(bb_copy);
+		}
+
+		if (info & (MAY_BE_STRING|MAY_BE_ARRAY)) {
+			BasicBlock *bb_no_copy = NULL;
+			if (info & (MAY_BE_ANY - (MAY_BE_STRING|MAY_BE_ARRAY))) {
+				//JIT: if (Z_OPT_IMMUTABLE_P(var_ptr) || Z_OPT_COPYABLE_P(var_ptr)) {
+				BasicBlock *bb_copy = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+				bb_no_copy = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+				zend_jit_unexpected_br(llvm_ctx,
+					llvm_ctx.builder.CreateICmpNE(
+						llvm_ctx.builder.CreateAnd(
+							type_info,
+							llvm_ctx.builder.getInt32((IS_TYPE_IMMUTABLE | IS_TYPE_COPYABLE) << Z_TYPE_FLAGS_SHIFT)),
+					llvm_ctx.builder.getInt32(0)),
+					bb_copy,
+					bb_no_copy);
+				llvm_ctx.builder.SetInsertPoint(bb_copy);
+			}
+
+			//JIT: zval_copy_ctor_func(var_ptr);
+			zend_jit_copy_ctor_func(llvm_ctx, zval_addr, opline->lineno);
+			if (!bb_end) {
+				bb_end = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+			}
+			llvm_ctx.builder.CreateBr(bb_end);
+			if (bb_no_copy) {
+				llvm_ctx.builder.SetInsertPoint(bb_no_copy);
+			}
+		}
+
+		//JIT: if (Z_OPT_REFCOUNTED_P(var_ptr)) Z_ADDREF_P(var_ptr);
+		zend_jit_try_addref(llvm_ctx, zval_addr, type_info, op_type, op, info);
+
+		if (bb_end) {
+			llvm_ctx.builder.CreateBr(bb_end);
+			llvm_ctx.builder.SetInsertPoint(bb_end);
+		}
+	}
+
+	return 1;
+}
+/* }}} */
+
+/* {{{ static int zend_jit_separate_zval_noref */
+static int zend_jit_separate_zval_noref(zend_llvm_ctx &llvm_ctx,
+                                        Value         *zval_addr,
+                                        Value         *type_info,
+                                        zend_uchar     op_type,
+                                        znode_op       op,
+                                        uint32_t       info,
+                                        zend_op       *opline)
+{
+
+	if (!type_info) {
+		type_info = zend_jit_load_type_info_c(llvm_ctx, zval_addr, op_type, op, info);
+	}
+
+	if ((info & (MAY_BE_STRING|MAY_BE_ARRAY)) && (info && MAY_BE_RCN)) {
+		BasicBlock *bb_end = NULL;
+
+		if (info & (MAY_BE_ANY - MAY_BE_ARRAY)) {
+			//JIT: if (Z_COPYABLE_P(_zv) || Z_IMMUTABLE_P(_zv)) {
+			BasicBlock *bb_copy = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+			if (!bb_end) {
+				bb_end = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+			}
+			zend_jit_unexpected_br(llvm_ctx,
+				llvm_ctx.builder.CreateICmpNE(
+					llvm_ctx.builder.CreateAnd(
+						type_info,
+						llvm_ctx.builder.getInt32((IS_TYPE_IMMUTABLE | IS_TYPE_COPYABLE) << Z_TYPE_FLAGS_SHIFT)),
+					llvm_ctx.builder.getInt32(0)),
+				bb_copy,
+				bb_end);
+			llvm_ctx.builder.SetInsertPoint(bb_copy);
+		}
+
+		Value *refcount_addr = NULL;
+		Value *refcount = NULL;
+		
+		if (info && MAY_BE_RC1) {
+			//JIT: if (Z_REFCOUNT_P(_zv) > 1) {
+			BasicBlock *bb_copy = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+			if (!bb_end) {
+				bb_end = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+			}
+			refcount_addr = zend_jit_refcount_addr(llvm_ctx,
+				zend_jit_load_counted(llvm_ctx, zval_addr));
+			refcount = llvm_ctx.builder.CreateAlignedLoad(refcount_addr, 4);
+			zend_jit_unexpected_br(llvm_ctx,
+				llvm_ctx.builder.CreateICmpUGT(
+					refcount,
+					llvm_ctx.builder.getInt32(1)),
+				bb_copy,
+				bb_end);
+			llvm_ctx.builder.SetInsertPoint(bb_copy);
+		}
+
+		BasicBlock *bb_copy = NULL;
+
+		if (info & MAY_BE_ARRAY) {
+			//JIT: if (!Z_IMMUTABLE_P(_zv)) {
+			BasicBlock *bb_rc = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+			bb_copy = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+			zend_jit_expected_br(llvm_ctx,
+				llvm_ctx.builder.CreateICmpEQ(
+					llvm_ctx.builder.CreateAnd(
+						type_info,
+						llvm_ctx.builder.getInt32(IS_TYPE_IMMUTABLE << Z_TYPE_FLAGS_SHIFT)),
+				llvm_ctx.builder.getInt32(0)),
+			bb_rc,
+			bb_copy);
+			llvm_ctx.builder.SetInsertPoint(bb_rc);
+		}
+
+		//JIT: Z_DELREF_P(_zv);
+		llvm_ctx.builder.CreateAlignedStore(
+			llvm_ctx.builder.CreateSub(
+				refcount,
+				llvm_ctx.builder.getInt32(1)),
+			refcount_addr, 4);
+
+		if (bb_copy) {
+			llvm_ctx.builder.CreateBr(bb_copy);
+			llvm_ctx.builder.SetInsertPoint(bb_copy);
+		}
+		//JIT: zval_copy_ctor_func(_zv);
+		zend_jit_copy_ctor_func(llvm_ctx, zval_addr, opline->lineno);
+
+		if (bb_end) {
+			llvm_ctx.builder.CreateBr(bb_end);
+			llvm_ctx.builder.SetInsertPoint(bb_end);
+		}
+	}
+	
+	return 1;
+}
+/* }}} */
+
 /* {{{ static Value* zend_jit_load_cv */
 static Value* zend_jit_load_cv(zend_llvm_ctx &llvm_ctx,
                                uint32_t       var,
@@ -2301,22 +2530,24 @@ static Value* zend_jit_load_cv(zend_llvm_ctx &llvm_ctx,
                                zend_op       *opline,
                                uint32_t       mode = BP_VAR_R)
 {
-	Value *zval_addr;
+	Value *zval_addr = NULL;
 	PHI_DCL(cv, 2);
 
 //???	if (info & MAY_BE_TMP_ZVAL) {
 //???		return zend_jit_load_tmp_cv(llvm_ctx, ssa_var);
 //???	}
 	// JIT: ret = EX_VAR(var)
-	if (info & MAY_BE_DEF) {
+	if ((info & MAY_BE_DEF) || mode == BP_VAR_RW || mode == BP_VAR_W) {
 		zval_addr = zend_jit_load_cv_addr(llvm_ctx, var);
 	}
 	if (info & MAY_BE_UNDEF) {
 		BasicBlock *bb_def = NULL;
 
-		if (info & MAY_BE_DEF) {
+		if (info & MAY_BE_DEF && mode != BP_VAR_IS) {
+			if (mode == BP_VAR_R || mode == BP_VAR_UNSET) {
+				PHI_ADD(cv, zval_addr);
+			}
 			// JIT: UNEXPECTED(Z_TYPE_P(ret) == IS_UNDEF)
-			PHI_ADD(cv, zval_addr);
 			BasicBlock *bb_undef = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 			bb_def = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 			zend_jit_unexpected_br(llvm_ctx,
@@ -2328,30 +2559,55 @@ static Value* zend_jit_load_cv(zend_llvm_ctx &llvm_ctx,
 			llvm_ctx.builder.SetInsertPoint(bb_undef);
 		}
 
-		if (mode == BP_VAR_R) {
-			// JIT: zend_error(E_NOTICE, "Undefined variable: %s", cv->val);
-			if (!llvm_ctx.valid_opline) {
-				// Store "opline" in EX(opline) for error messages etc
-				JIT_CHECK(zend_jit_store_opline(llvm_ctx, opline, false));
+		switch (mode) {
+			case BP_VAR_R:
+			case BP_VAR_UNSET: {
+				// JIT: zend_error(E_NOTICE, "Undefined variable: %s", cv->val);
+				if (!llvm_ctx.valid_opline) {
+					// Store "opline" in EX(opline) for error messages etc
+					JIT_CHECK(zend_jit_store_opline(llvm_ctx, opline, false));
+				}
+				zend_jit_error(llvm_ctx, E_NOTICE, "Undefined variable: %s",
+					LLVM_GET_CONST_STRING(llvm_ctx.op_array->vars[EX_VAR_TO_NUM(var)]->val),
+					opline);
+				if (check && !(JIT_DATA(llvm_ctx.op_array)->flags & ZEND_JIT_FUNC_NO_FRAME)) {
+					JIT_CHECK(zend_jit_check_exception(llvm_ctx, opline));
+				}
+				Value *uninitialized = llvm_ctx._EG_uninitialized_zval;
+				PHI_ADD(cv, uninitialized);
+				if (bb_def) {
+					llvm_ctx.builder.CreateBr(bb_def);
+					llvm_ctx.builder.SetInsertPoint(bb_def);
+				}
+				PHI_SET(cv, zval_addr, llvm_ctx.zval_ptr_type);
+				break;
 			}
-			zend_jit_error(llvm_ctx, E_NOTICE, "Undefined variable: %s",
-				LLVM_GET_CONST_STRING(llvm_ctx.op_array->vars[EX_VAR_TO_NUM(var)]->val),
-				opline);
-			if (check && !(JIT_DATA(llvm_ctx.op_array)->flags & ZEND_JIT_FUNC_NO_FRAME)) {
-				JIT_CHECK(zend_jit_check_exception(llvm_ctx, opline));
-			}
-		} else if (mode == BP_VAR_IS) {
-			/* nothing to do */
-		} else {
-			ASSERT_NOT_REACHED();
+			case BP_VAR_IS:
+				/* nothing to do */
+				break;
+			case BP_VAR_RW:
+				// JIT: zend_error(E_NOTICE, "Undefined variable: %s", cv->val);
+				if (!llvm_ctx.valid_opline) {
+					// Store "opline" in EX(opline) for error messages etc
+					JIT_CHECK(zend_jit_store_opline(llvm_ctx, opline, false));
+				}
+				zend_jit_error(llvm_ctx, E_NOTICE, "Undefined variable: %s",
+					LLVM_GET_CONST_STRING(llvm_ctx.op_array->vars[EX_VAR_TO_NUM(var)]->val),
+					opline);
+				if (check && !(JIT_DATA(llvm_ctx.op_array)->flags & ZEND_JIT_FUNC_NO_FRAME)) {
+					JIT_CHECK(zend_jit_check_exception(llvm_ctx, opline));
+				}
+				/* break missing intentionally */
+			case BP_VAR_W:
+				zend_jit_save_zval_type_info(llvm_ctx, zval_addr, llvm_ctx.builder.getInt32(IS_NULL));
+				if (bb_def) {
+					llvm_ctx.builder.CreateBr(bb_def);
+					llvm_ctx.builder.SetInsertPoint(bb_def);
+				}
+				break;
+			default:
+				ASSERT_NOT_REACHED();
 		}
-		Value *uninitialized = llvm_ctx._EG_uninitialized_zval;
-		PHI_ADD(cv, uninitialized);
-		if (info & MAY_BE_DEF) {
-			llvm_ctx.builder.CreateBr(bb_def);
-			llvm_ctx.builder.SetInsertPoint(bb_def);
-		}
-		PHI_SET(cv, zval_addr, llvm_ctx.zval_ptr_type);
 	}
 	return zval_addr;
 }
@@ -2520,6 +2776,25 @@ static int zend_jit_load_operands(zend_llvm_ctx     &llvm_ctx,
 				opline->op2_type, opline->op2, OP2_SSA_VAR(), OP2_INFO(), 0, opline);
 	}
 	return 1;
+}
+/* }}} */
+
+/* {{{ static int zend_jit_load_operand_addr */
+static Value* zend_jit_load_operand_addr(zend_llvm_ctx &llvm_ctx,
+                                         zend_uchar     op_type,
+                                         znode_op       op,
+                                         int            ssa_var,
+                                         uint32_t       info,
+                                         uint32_t       mode,
+                                         zend_op       *opline)
+{
+	if (op_type == IS_CV) {
+		return zend_jit_load_cv(llvm_ctx, op.var, info, ssa_var, 0, opline, mode);
+	} else if (op_type == IS_VAR) {
+		ASSERT_NOT_REACHED(); // not implemented yet
+	} else {
+		ASSERT_NOT_REACHED();
+	}	
 }
 /* }}} */
 
@@ -5022,37 +5297,6 @@ static int zend_jit_copy_value(zend_llvm_ctx &llvm_ctx,
 /* }}} */
 
 /* {{{ static int zend_jit_qm_assign */
-static int zend_jit_try_addref(zend_llvm_ctx    &llvm_ctx,
-                               Value            *val,
-                               Value            *type_info,
-                               zend_uchar        op_type,
-                               znode_op          op,
-                               uint32_t          info)
-{
-	if (info & (MAY_BE_STRING|MAY_BE_ARRAY|MAY_BE_OBJECT|MAY_BE_RESOURCE)) {
-		BasicBlock *bb_rc = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
-		BasicBlock *bb_norc = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
-		if (!type_info) {
-			type_info = zend_jit_load_type_info_c(llvm_ctx, val, op_type, op, info);
-		}
-		zend_jit_expected_br(llvm_ctx,
-			llvm_ctx.builder.CreateICmpNE(
-				llvm_ctx.builder.CreateAnd(
-					type_info,
-					llvm_ctx.builder.getInt32(IS_TYPE_REFCOUNTED << Z_TYPE_FLAGS_SHIFT)),
-			llvm_ctx.builder.getInt32(0)),
-			bb_rc,
-			bb_norc);
-		llvm_ctx.builder.SetInsertPoint(bb_rc);
-		zend_jit_addref(llvm_ctx,
-			zend_jit_load_counted(llvm_ctx, val));
-		llvm_ctx.builder.CreateBr(bb_norc);
-		llvm_ctx.builder.SetInsertPoint(bb_norc);
-	}
-	return 1;
-}
-
-/* {{{ static int zend_jit_qm_assign */
 static int zend_jit_qm_assign(zend_llvm_ctx    &llvm_ctx,
                               zend_op_array    *op_array,
                               zend_op          *opline)
@@ -5566,6 +5810,457 @@ static int zend_jit_add_string(zend_llvm_ctx    &llvm_ctx,
 				&may_threw);
 #endif
 	}
+
+	llvm_ctx.valid_opline = 0;
+	return 1;
+}
+/* }}} */
+
+/* {{{ static int zend_jit_incdec */
+static int zend_jit_incdec(zend_llvm_ctx    &llvm_ctx,
+                           zend_op_array    *op_array,
+                           zend_op          *opline)
+{
+	if (opline->op1_type != IS_CV) {
+		return zend_jit_handler(llvm_ctx, opline);
+	}
+
+	//JIT: var_ptr = GET_OP1_ZVAL_PTR_PTR(BP_VAR_RW);
+ 	Value *op1_addr = zend_jit_load_operand_addr(llvm_ctx,
+ 		opline->op1_type, opline->op1, OP1_SSA_VAR(), OP1_INFO(), BP_VAR_RW, opline);
+	Value *op1_type_info = NULL;
+	BasicBlock *bb_finish = NULL;
+	Value *res;
+
+	if (opline->op1_type == IS_VAR) { //TODO: MAY_BE_STRING_OFFSET
+		//JIT: if (UNEXPECTED(var_ptr == NULL)) {
+		BasicBlock *bb_null = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+		BasicBlock *bb_not_null = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+		zend_jit_unexpected_br(llvm_ctx,
+				llvm_ctx.builder.CreateIsNull(op1_addr),
+					bb_null,
+					bb_not_null);
+		llvm_ctx.builder.SetInsertPoint(bb_null);
+		//JIT: zend_error_noreturn(E_ERROR, "Cannot increment/decrement overloaded objects nor string offsets");
+		zend_jit_error_noreturn(
+			llvm_ctx,
+			E_ERROR,
+			"Cannot increment/decrement overloaded objects nor string offsets", NULL);
+		llvm_ctx.builder.SetInsertPoint(bb_not_null);
+	}
+
+ 	if (OP1_MAY_BE(MAY_BE_LONG)) {
+ 		BasicBlock *bb_nolong = NULL;
+ 		if (OP1_MAY_BE(MAY_BE_ERROR | (MAY_BE_ANY - MAY_BE_LONG))) {
+			//JIT: if (EXPECTED(Z_TYPE_P(var_ptr) == IS_LONG)) {
+			BasicBlock *bb_long = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+			bb_nolong = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+			op1_type_info = zend_jit_load_type_info_c(llvm_ctx, op1_addr, opline->op1_type, opline->op1, OP1_INFO());
+			zend_jit_expected_br(llvm_ctx,
+				llvm_ctx.builder.CreateICmpEQ(
+					op1_type_info,
+					llvm_ctx.builder.getInt32(IS_LONG)),
+				bb_long,
+				bb_nolong);
+			llvm_ctx.builder.SetInsertPoint(bb_long);
+ 		}
+
+ 		Value *val;
+ 		switch (opline->opcode) {
+ 			case ZEND_PRE_INC:
+				//JIT: fast_increment_function(var_ptr);
+				if (OP1_DEF_MAY_BE(MAY_BE_DOUBLE)) {
+					val = zend_jit_load_lval_c(llvm_ctx, op1_addr, opline->op1_type, opline->op1, OP1_SSA_VAR(), OP1_INFO());
+					Function *func = Intrinsic::getDeclaration(
+						llvm_ctx.module,
+						Intrinsic::sadd_with_overflow,
+						ArrayRef<Type*>(Type::LLVM_GET_LONG_TY(llvm_ctx.context)));
+					Value *call = llvm_ctx.builder.CreateCall2(
+						func,
+						val,
+						LLVM_GET_LONG(1));
+					BasicBlock *bb_ok = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+					BasicBlock *bb_overflow = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+					BasicBlock *bb_end = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+					zend_jit_unexpected_br(llvm_ctx,
+					    llvm_ctx.builder.CreateExtractValue(call, 1),
+						bb_overflow,
+						bb_ok);
+					llvm_ctx.builder.SetInsertPoint(bb_overflow);
+#if defined(__x86_64)
+					zend_jit_save_zval_lval(llvm_ctx,
+						op1_addr,
+						LLVM_GET_LONG(0x43e0000000000000));
+#else
+					zend_jit_save_zval_value(llvm_ctx,
+						op1_addr,
+						LLVM_GET_LONG(0x0),
+						LLVM_GET_LONG(0x41e00000));
+#endif
+					zend_jit_save_zval_type_info(llvm_ctx, op1_addr, llvm_ctx.builder.getInt32(IS_DOUBLE));
+					if (RETURN_VALUE_USED(opline)) {
+						//JIT: ZVAL_COPY_VALUE(EX_VAR(opline->result.var), var_ptr);
+						res = zend_jit_load_slot(llvm_ctx, opline->result.var);
+#if defined(__x86_64)
+						zend_jit_save_zval_lval(llvm_ctx,
+							res,
+							LLVM_GET_LONG(0x43e0000000000000));
+#else
+						zend_jit_save_zval_value(llvm_ctx,
+							res,
+							LLVM_GET_LONG(0x0),
+							LLVM_GET_LONG(0x41e00000));
+#endif
+						zend_jit_save_zval_type_info(llvm_ctx, res, llvm_ctx.builder.getInt32(IS_DOUBLE));
+					}
+					llvm_ctx.builder.CreateBr(bb_end);
+					llvm_ctx.builder.SetInsertPoint(bb_ok);
+					val = llvm_ctx.builder.CreateExtractValue(call, 0);
+					zend_jit_save_zval_lval(llvm_ctx, op1_addr, val);
+					if (RETURN_VALUE_USED(opline)) {
+						//JIT: ZVAL_COPY_VALUE(EX_VAR(opline->result.var), var_ptr);
+						res = zend_jit_load_slot(llvm_ctx, opline->result.var);
+						zend_jit_save_zval_lval(llvm_ctx, res, val);
+						zend_jit_save_zval_type_info(llvm_ctx, res, llvm_ctx.builder.getInt32(IS_LONG));
+					}
+					llvm_ctx.builder.CreateBr(bb_end);
+					llvm_ctx.builder.SetInsertPoint(bb_end);
+				} else {
+					val = llvm_ctx.builder.CreateAdd(
+						zend_jit_load_lval_c(llvm_ctx, op1_addr, opline->op1_type, opline->op1, OP1_SSA_VAR(), OP1_INFO()),
+						LLVM_GET_LONG(1));
+					zend_jit_save_zval_lval(llvm_ctx, op1_addr, val);
+					if (RETURN_VALUE_USED(opline)) {
+						//JIT: ZVAL_COPY_VALUE(EX_VAR(opline->result.var), var_ptr);
+						res = zend_jit_load_slot(llvm_ctx, opline->result.var);
+						zend_jit_save_zval_lval(llvm_ctx, res, val);
+						zend_jit_save_zval_type_info(llvm_ctx, res, llvm_ctx.builder.getInt32(IS_LONG));
+					}
+				}
+ 				break;
+ 			case ZEND_PRE_DEC:
+				//JIT: fast_decrement_function(var_ptr);
+				if (OP1_DEF_MAY_BE(MAY_BE_DOUBLE)) {
+					val = zend_jit_load_lval_c(llvm_ctx, op1_addr, opline->op1_type, opline->op1, OP1_SSA_VAR(), OP1_INFO());
+					Function *func = Intrinsic::getDeclaration(
+						llvm_ctx.module,
+						Intrinsic::ssub_with_overflow,
+						ArrayRef<Type*>(Type::LLVM_GET_LONG_TY(llvm_ctx.context)));
+					Value *call = llvm_ctx.builder.CreateCall2(
+						func,
+						val,
+						LLVM_GET_LONG(1));
+					BasicBlock *bb_ok = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+					BasicBlock *bb_overflow = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+					BasicBlock *bb_end = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+					zend_jit_unexpected_br(llvm_ctx,
+					    llvm_ctx.builder.CreateExtractValue(call, 1),
+						bb_overflow,
+						bb_ok);
+					llvm_ctx.builder.SetInsertPoint(bb_overflow);
+#if defined(__x86_64)
+					zend_jit_save_zval_lval(llvm_ctx,
+						op1_addr,
+						LLVM_GET_LONG(0xc3e0000000000000));
+#else
+					zend_jit_save_zval_value(llvm_ctx,
+						op1_addr,
+						LLVM_GET_LONG(0x00200000),
+						LLVM_GET_LONG(0xc1e00000));
+#endif
+					zend_jit_save_zval_type_info(llvm_ctx, op1_addr, llvm_ctx.builder.getInt32(IS_DOUBLE));
+					if (RETURN_VALUE_USED(opline)) {
+						//JIT: ZVAL_COPY_VALUE(EX_VAR(opline->result.var), var_ptr);
+						res = zend_jit_load_slot(llvm_ctx, opline->result.var);
+#if defined(__x86_64)
+						zend_jit_save_zval_lval(llvm_ctx,
+							res,
+							LLVM_GET_LONG(0x43e0000000000000));
+#else
+						zend_jit_save_zval_value(llvm_ctx,
+							res,
+							LLVM_GET_LONG(0x0),
+							LLVM_GET_LONG(0x41e00000));
+#endif
+						zend_jit_save_zval_type_info(llvm_ctx, res, llvm_ctx.builder.getInt32(IS_DOUBLE));
+					}
+					llvm_ctx.builder.CreateBr(bb_end);
+					llvm_ctx.builder.SetInsertPoint(bb_ok);
+					val = llvm_ctx.builder.CreateExtractValue(call, 0);
+					zend_jit_save_zval_lval(llvm_ctx, op1_addr, val);
+					if (RETURN_VALUE_USED(opline)) {
+						//JIT: ZVAL_COPY_VALUE(EX_VAR(opline->result.var), var_ptr);
+						res = zend_jit_load_slot(llvm_ctx, opline->result.var);
+						zend_jit_save_zval_lval(llvm_ctx, res, val);
+						zend_jit_save_zval_type_info(llvm_ctx, res, llvm_ctx.builder.getInt32(IS_LONG));
+					}
+					llvm_ctx.builder.CreateBr(bb_end);
+					llvm_ctx.builder.SetInsertPoint(bb_end);
+				} else {
+					val = llvm_ctx.builder.CreateSub(
+						zend_jit_load_lval_c(llvm_ctx, op1_addr, opline->op1_type, opline->op1, OP1_SSA_VAR(), OP1_INFO()),
+						LLVM_GET_LONG(1));
+					zend_jit_save_zval_lval(llvm_ctx, op1_addr, val);
+					if (RETURN_VALUE_USED(opline)) {
+						//JIT: ZVAL_COPY_VALUE(EX_VAR(opline->result.var), var_ptr);
+						res = zend_jit_load_slot(llvm_ctx, opline->result.var);
+						zend_jit_save_zval_lval(llvm_ctx, res, val);
+						zend_jit_save_zval_type_info(llvm_ctx, res, llvm_ctx.builder.getInt32(IS_LONG));
+					}
+				}
+				break;
+ 			case ZEND_POST_INC:
+				//JIT: ZVAL_COPY_VALUE(EX_VAR(opline->result.var), var_ptr);
+				val = zend_jit_load_lval_c(llvm_ctx, op1_addr, opline->op1_type, opline->op1, OP1_SSA_VAR(), OP1_INFO());
+				res = zend_jit_load_slot(llvm_ctx, opline->result.var);
+				zend_jit_save_zval_lval(llvm_ctx, res, val);
+				zend_jit_save_zval_type_info(llvm_ctx, res, llvm_ctx.builder.getInt32(IS_LONG));
+				//JIT: fast_increment_function(var_ptr);
+				if (OP1_DEF_MAY_BE(MAY_BE_DOUBLE)) {
+					Function *func = Intrinsic::getDeclaration(
+						llvm_ctx.module,
+						Intrinsic::sadd_with_overflow,
+						ArrayRef<Type*>(Type::LLVM_GET_LONG_TY(llvm_ctx.context)));
+					Value *call = llvm_ctx.builder.CreateCall2(
+						func,
+						val,
+						LLVM_GET_LONG(1));
+					BasicBlock *bb_ok = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+					BasicBlock *bb_overflow = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+					BasicBlock *bb_end = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+					zend_jit_unexpected_br(llvm_ctx,
+					    llvm_ctx.builder.CreateExtractValue(call, 1),
+						bb_overflow,
+						bb_ok);
+					llvm_ctx.builder.SetInsertPoint(bb_overflow);
+#if defined(__x86_64)
+					zend_jit_save_zval_lval(llvm_ctx,
+						op1_addr,
+						LLVM_GET_LONG(0x43e0000000000000));
+#else
+					zend_jit_save_zval_value(llvm_ctx,
+						op1_addr,
+						LLVM_GET_LONG(0x0),
+						LLVM_GET_LONG(0x41e00000));
+#endif
+					zend_jit_save_zval_type_info(llvm_ctx, op1_addr, llvm_ctx.builder.getInt32(IS_DOUBLE));
+					llvm_ctx.builder.CreateBr(bb_end);
+					llvm_ctx.builder.SetInsertPoint(bb_ok);
+					val = llvm_ctx.builder.CreateExtractValue(call, 0);
+					zend_jit_save_zval_lval(llvm_ctx, op1_addr, val);
+					llvm_ctx.builder.CreateBr(bb_end);
+					llvm_ctx.builder.SetInsertPoint(bb_end);
+				} else {
+					zend_jit_save_zval_lval(llvm_ctx, op1_addr,
+						llvm_ctx.builder.CreateAdd(
+							val,
+							LLVM_GET_LONG(1)));
+				}
+				break;
+ 			case ZEND_POST_DEC:
+				//JIT: ZVAL_COPY_VALUE(EX_VAR(opline->result.var), var_ptr);
+				val = zend_jit_load_lval_c(llvm_ctx, op1_addr, opline->op1_type, opline->op1, OP1_SSA_VAR(), OP1_INFO());
+				res = zend_jit_load_slot(llvm_ctx, opline->result.var);
+				zend_jit_save_zval_lval(llvm_ctx, res, val);
+				zend_jit_save_zval_type_info(llvm_ctx, res, llvm_ctx.builder.getInt32(IS_LONG));
+				//JIT: fast_decrement_function(var_ptr);
+				if (OP1_DEF_MAY_BE(MAY_BE_DOUBLE)) {
+					Function *func = Intrinsic::getDeclaration(
+						llvm_ctx.module,
+						Intrinsic::ssub_with_overflow,
+						ArrayRef<Type*>(Type::LLVM_GET_LONG_TY(llvm_ctx.context)));
+					Value *call = llvm_ctx.builder.CreateCall2(
+						func,
+						val,
+						LLVM_GET_LONG(1));
+					BasicBlock *bb_ok = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+					BasicBlock *bb_overflow = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+					BasicBlock *bb_end = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+					zend_jit_unexpected_br(llvm_ctx,
+					    llvm_ctx.builder.CreateExtractValue(call, 1),
+						bb_overflow,
+						bb_ok);
+					llvm_ctx.builder.SetInsertPoint(bb_overflow);
+#if defined(__x86_64)
+					zend_jit_save_zval_lval(llvm_ctx,
+						op1_addr,
+						LLVM_GET_LONG(0xc3e0000000000000));
+#else
+					zend_jit_save_zval_value(llvm_ctx,
+						op1_addr,
+						LLVM_GET_LONG(0x00200000),
+						LLVM_GET_LONG(0xc1e00000));
+#endif
+					zend_jit_save_zval_type_info(llvm_ctx, op1_addr, llvm_ctx.builder.getInt32(IS_DOUBLE));
+					llvm_ctx.builder.CreateBr(bb_end);
+					llvm_ctx.builder.SetInsertPoint(bb_ok);
+					val = llvm_ctx.builder.CreateExtractValue(call, 0);
+					zend_jit_save_zval_lval(llvm_ctx, op1_addr, val);
+					llvm_ctx.builder.CreateBr(bb_end);
+					llvm_ctx.builder.SetInsertPoint(bb_end);
+				} else {
+					zend_jit_save_zval_lval(llvm_ctx, op1_addr,
+						llvm_ctx.builder.CreateSub(
+							val,
+							LLVM_GET_LONG(1)));
+				}
+				break;
+ 			default:
+				ASSERT_NOT_REACHED();
+		}
+ 		if (OP1_MAY_BE(MAY_BE_ERROR | (MAY_BE_ANY - MAY_BE_LONG))) {
+			bb_finish = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+			llvm_ctx.builder.CreateBr(bb_finish);
+ 		}
+ 		if (bb_nolong) {
+			llvm_ctx.builder.SetInsertPoint(bb_nolong);
+		}
+ 	}
+
+ 	if (opline->op1_type == IS_VAR && OP1_MAY_BE(MAY_BE_ERROR)) {
+		BasicBlock *bb_error = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+		BasicBlock *bb_not_error = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+		zend_jit_unexpected_br(llvm_ctx,
+				llvm_ctx.builder.CreateIsNull(op1_addr),
+					bb_error,
+					bb_not_error);
+		llvm_ctx.builder.SetInsertPoint(bb_error);
+		if (opline->opcode == ZEND_POST_INC
+		 || opline->opcode == ZEND_POST_DEC
+		 || RETURN_VALUE_USED(opline)) {
+			//JIT: ZVAL_NULL(EX_VAR(opline->result.var));
+			zend_jit_save_zval_type_info(llvm_ctx, res, llvm_ctx.builder.getInt32(IS_NULL));
+		}
+		if (!bb_finish) {
+			bb_finish = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+		}
+		llvm_ctx.builder.CreateBr(bb_finish);
+		llvm_ctx.builder.SetInsertPoint(bb_not_error);
+ 	}
+
+	if (OP1_MAY_BE(MAY_BE_ANY - MAY_BE_LONG)) {
+		if (opline->opcode == ZEND_PRE_INC || opline->opcode == ZEND_PRE_DEC) {
+			//JIT: ZVAL_DEREF(var_ptr);
+			op1_addr = zend_jit_deref(llvm_ctx, op1_addr, OP1_INFO());
+			//JIT: SEPARATE_ZVAL_NOREF(var_ptr);
+			zend_jit_separate_zval_noref(llvm_ctx, op1_addr, NULL, opline->op1_type, opline->op1, OP1_INFO(), opline);
+
+			//JIT: (in|de)crement_function(var_ptr);
+			Function *_helper = zend_jit_get_helper(
+					llvm_ctx,
+					opline->opcode == ZEND_PRE_INC ?
+						(void*)increment_function :
+						(void*)decrement_function,
+					opline->opcode == ZEND_PRE_INC ?
+						ZEND_JIT_SYM("increment_function") :
+						ZEND_JIT_SYM("decrement_function"),
+					0,
+					Type::getVoidTy(llvm_ctx.context),
+					llvm_ctx.zval_ptr_type,
+					NULL,
+					NULL,
+					NULL,
+					NULL);
+			llvm_ctx.builder.CreateCall(_helper, op1_addr);
+
+			if (RETURN_VALUE_USED(opline)) {
+				//JIT: ZVAL_COPY(EX_VAR(opline->result.var), var_ptr);
+				res = zend_jit_load_slot(llvm_ctx, opline->result.var);
+				op1_type_info = zend_jit_load_type_info_c(llvm_ctx, op1_addr, opline->op1_type, opline->op1, OP1_DEF_INFO());
+				zend_jit_copy_value(llvm_ctx, res, -1,
+						op1_addr, op1_type_info, opline->op1_type, opline->op1, OP1_DEF_SSA_VAR(), OP1_DEF_INFO());
+				zend_jit_try_addref(llvm_ctx, res, op1_type_info, opline->op1_type, opline->op1, OP1_DEF_INFO());
+			}
+
+			//JIT: FREE_OP1_VAR_PTR();
+			//???
+		} else if (opline->opcode == ZEND_POST_INC || opline->opcode == ZEND_POST_DEC) {
+			BasicBlock *bb_op = NULL;
+			op1_type_info = zend_jit_load_type_info_c(llvm_ctx, op1_addr, opline->op1_type, opline->op1, OP1_INFO());
+
+			if (OP1_MAY_BE(MAY_BE_REF)) {
+				BasicBlock *bb_no_ref = NULL;
+				if (OP1_MAY_BE(MAY_BE_RC1|MAY_BE_RCN)) {
+					BasicBlock *bb_ref = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+					bb_no_ref = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+					//JIT: if (UNEXPECTED(Z_ISREF_P(var_ptr))) {
+					zend_jit_unexpected_br(llvm_ctx,
+						llvm_ctx.builder.CreateICmpEQ(
+							op1_type_info,
+							llvm_ctx.builder.getInt32(IS_REFERENCE_EX)),
+						bb_ref,
+						bb_no_ref);
+					llvm_ctx.builder.SetInsertPoint(bb_ref);
+				}
+				//JIT: var_ptr = Z_REFVAL_P(var_ptr);
+				Value *ref = zend_jit_load_reference(llvm_ctx,
+					zend_jit_load_counted(llvm_ctx, op1_addr));
+				Value *ref_type_info = zend_jit_load_type_info_c(llvm_ctx, ref, opline->op1_type, opline->op1, OP1_INFO());
+				//JIT: ZVAL_DUP(EX_VAR(opline->result.var), var_ptr);
+				res = zend_jit_load_slot(llvm_ctx, opline->result.var);
+				zend_jit_copy_value(llvm_ctx, res, -1,
+						ref, ref_type_info, opline->op1_type, opline->op1, OP1_SSA_VAR(), OP1_INFO());
+				zend_jit_zval_copy_ctor(llvm_ctx, res, ref_type_info,
+						opline->op1_type, opline->op1, OP1_INFO(), opline);
+				if (!bb_op) {
+					bb_op = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+				}
+				llvm_ctx.builder.CreateBr(bb_op);
+				if (bb_no_ref) {
+					llvm_ctx.builder.SetInsertPoint(bb_no_ref);
+				}
+			}
+
+			if (OP1_MAY_BE(MAY_BE_RC1|MAY_BE_RCN)) {
+				//JIT: ZVAL_COPY_VALUE(EX_VAR(opline->result.var), var_ptr);
+				res = zend_jit_load_slot(llvm_ctx, opline->result.var);
+				zend_jit_copy_value(llvm_ctx, res, -1,
+						op1_addr, op1_type_info, opline->op1_type, opline->op1, OP1_SSA_VAR(), OP1_INFO());
+				//JIT: zval_opt_copy_ctor(var_ptr);
+				zend_jit_zval_copy_ctor(llvm_ctx, op1_addr, op1_type_info,
+						opline->op1_type, opline->op1, OP1_INFO(), opline);
+				if (bb_op) {
+					llvm_ctx.builder.CreateBr(bb_op);
+				}
+			}
+
+			if (bb_op) {
+				llvm_ctx.builder.SetInsertPoint(bb_op);
+			}
+			
+			//JIT: (in|de)crement_function(var_ptr);
+			Function *_helper = zend_jit_get_helper(
+					llvm_ctx,
+					opline->opcode == ZEND_POST_INC ?
+						(void*)increment_function :
+						(void*)decrement_function,
+					opline->opcode == ZEND_POST_INC ?
+						ZEND_JIT_SYM("increment_function") :
+						ZEND_JIT_SYM("decrement_function"),
+					0,
+					Type::getVoidTy(llvm_ctx.context),
+					llvm_ctx.zval_ptr_type,
+					NULL,
+					NULL,
+					NULL,
+					NULL);
+			llvm_ctx.builder.CreateCall(_helper, op1_addr);
+
+			//JIT: FREE_OP1_VAR_PTR();
+			//???
+		} else {
+			ASSERT_NOT_REACHED();
+		}
+	 	if (bb_finish) {
+			llvm_ctx.builder.CreateBr(bb_finish);
+		}
+	}
+
+ 	if (bb_finish) {
+		llvm_ctx.builder.SetInsertPoint(bb_finish);
+	}
+	//JIT: CHECK_EXCEPTION(); ???
+	//JIT: ZEND_VM_NEXT_OPCODE();
 
 	llvm_ctx.valid_opline = 0;
 	return 1;
@@ -6128,14 +6823,15 @@ static int zend_jit_codegen_ex(zend_jit_context *ctx,
 				case ZEND_ASSIGN_OBJ:
 					if (!zend_jit_assign_obj(llvm_ctx, ctx, op_array, opline)) return 0;
 					break;
+#endif
 				case ZEND_PRE_INC:
 				case ZEND_PRE_DEC:
-					if (!zend_jit_incdec(llvm_ctx, op_array, opline, 1)) return 0;
-					break;
 				case ZEND_POST_INC:
 				case ZEND_POST_DEC:
-					if (!zend_jit_incdec(llvm_ctx, op_array, opline, 0)) return 0;
+					if (!zend_jit_incdec(llvm_ctx, op_array, opline)) return 0;
 					break;
+//???
+#if 0
 				case ZEND_RECV:
 				case ZEND_RECV_INIT:
 					if (!zend_jit_recv(llvm_ctx, op_array, opline)) return 0;
@@ -6210,15 +6906,15 @@ static int zend_jit_codegen_ex(zend_jit_context *ctx,
 					if (!zend_jit_send_val(llvm_ctx, op_array, opline, 1)) return 0;
 					llvm_ctx.valid_opline = 0;
 					break;
-//				case ZEND_SEND_REF:
-//					if (!zend_jit_send_ref(llvm_ctx, op_array, opline)) return 0;
-//					break;
+//???				case ZEND_SEND_REF:
+//???					if (!zend_jit_send_ref(llvm_ctx, op_array, opline)) return 0;
+//???					break;
 				case ZEND_SEND_VAR:
 					if (!zend_jit_send_var(llvm_ctx, op_array, opline, 0)) return 0;
 					break;
-//				case ZEND_SEND_VAR_EX:
-//					if (!zend_jit_send_var(llvm_ctx, op_array, opline, 1)) return 0;
-//					break;
+//???				case ZEND_SEND_VAR_EX:
+//???					if (!zend_jit_send_var(llvm_ctx, op_array, opline, 1)) return 0;
+//???					break;
 //???
 #if 0
 				case ZEND_SEND_VAR_NO_REF:
