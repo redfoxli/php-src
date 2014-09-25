@@ -57,20 +57,24 @@ static uint32_t zend_jit_strlen_info(const zend_jit_call_info *call_info)
 	if (call_info->caller_init_opline->extended_value == call_info->num_args &&
 	    call_info->num_args == 1) {
 
-	    uint32_t arg_info = ssa_op1_info(call_info->caller_op_array, call_info->arg_info[0].opline);
 		uint32_t tmp = MAY_BE_DEF | MAY_BE_RC1;
+	    if (call_info->arg_info[0].opline) {
+		    uint32_t arg_info = ssa_op1_info(call_info->caller_op_array, call_info->arg_info[0].opline);
 
-	    if (arg_info & (MAY_BE_NULL|MAY_BE_FALSE|MAY_BE_TRUE|MAY_BE_LONG|MAY_BE_DOUBLE|MAY_BE_STRING|MAY_BE_OBJECT)) {
-			tmp |= MAY_BE_LONG;
-	    }
-	    if (arg_info & (MAY_BE_ARRAY|MAY_BE_OBJECT|MAY_BE_RESOURCE)) {
-	    	/* warning, and returns NULL */
-			tmp |= FUNC_MAY_WARN | MAY_BE_NULL;
-	    }
-	    if ((arg_info & MAY_BE_ANY) == MAY_BE_STRING) {
-	    	/* TODO: strlen() may be overriden by mbstring */
-	    	tmp |= FUNC_MAY_INLINE;
-	    }
+	    	if (arg_info & (MAY_BE_NULL|MAY_BE_FALSE|MAY_BE_TRUE|MAY_BE_LONG|MAY_BE_DOUBLE|MAY_BE_STRING|MAY_BE_OBJECT)) {
+				tmp |= MAY_BE_LONG;
+		    }
+		    if (arg_info & (MAY_BE_ARRAY|MAY_BE_OBJECT|MAY_BE_RESOURCE)) {
+	    		/* warning, and returns NULL */
+				tmp |= FUNC_MAY_WARN | MAY_BE_NULL;
+		    }
+		    if ((arg_info & MAY_BE_ANY) == MAY_BE_STRING) {
+	    		/* TODO: strlen() may be overriden by mbstring */
+	    		tmp |= FUNC_MAY_INLINE;
+		    }
+		} else {
+			tmp |= MAY_BE_LONG | FUNC_MAY_WARN | MAY_BE_NULL;
+		}
 	    return tmp;
 	} else {
     	/* warning, and returns NULL */
