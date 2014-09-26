@@ -56,18 +56,27 @@
 
 #include "llvm/Config/llvm-config.h"
 
-#if (LLVM_VERSION_MAJOR == 3 && LLVM_VERSION_MINOR >= 3 && LLVM_VERSION_MINOR <= 4)
+#if (LLVM_VERSION_MAJOR == 3 && LLVM_VERSION_MINOR >= 5 && LLVM_VERSION_MINOR <= 5)
 # include "llvm/IR/Module.h"
 # include "llvm/IR/IRBuilder.h"
 # include "llvm/IR/Intrinsics.h"
 # include "llvm/IR/MDBuilder.h"
+# include "llvm/IR/Verifier.h"
+# include "llvm/Support/Host.h"
+#elif (LLVM_VERSION_MAJOR == 3 && LLVM_VERSION_MINOR >= 3 && LLVM_VERSION_MINOR <= 4)
+# include "llvm/IR/Module.h"
+# include "llvm/IR/IRBuilder.h"
+# include "llvm/IR/Intrinsics.h"
+# include "llvm/IR/MDBuilder.h"
+# include "llvm/Analysis/Verifier.h"
 #elif (LLVM_VERSION_MAJOR == 3 && LLVM_VERSION_MINOR == 2)
 # include "llvm/Module.h"
 # include "llvm/IRBuilder.h"
 # include "llvm/Intrinsics.h"
 # include "llvm/MDBuilder.h"
+# include "llvm/Analysis/Verifier.h"
 #else
-# error "Unsupported LLVM version (only versions between 3.2 and 3.4 are supported)"
+# error "Unsupported LLVM version (only versions between 3.2 and 3.5 are supported)"
 #endif
 
 #include "llvm/Support/TargetSelect.h"
@@ -82,7 +91,6 @@
 #endif
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/Triple.h"
-#include "llvm/Analysis/Verifier.h"
 #include "llvm/Analysis/Passes.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/PassManager.h"
@@ -5893,7 +5901,7 @@ static int zend_jit_incdec(zend_llvm_ctx    &llvm_ctx,
 						bb_overflow,
 						bb_ok);
 					llvm_ctx.builder.SetInsertPoint(bb_overflow);
-#if defined(__x86_64)
+#if defined(__x86_64__)
 					zend_jit_save_zval_lval(llvm_ctx,
 						op1_addr,
 						LLVM_GET_LONG(0x43e0000000000000));
@@ -5907,7 +5915,7 @@ static int zend_jit_incdec(zend_llvm_ctx    &llvm_ctx,
 					if (RETURN_VALUE_USED(opline)) {
 						//JIT: ZVAL_COPY_VALUE(EX_VAR(opline->result.var), var_ptr);
 						res = zend_jit_load_slot(llvm_ctx, opline->result.var);
-#if defined(__x86_64)
+#if defined(__x86_64__)
 						zend_jit_save_zval_lval(llvm_ctx,
 							res,
 							LLVM_GET_LONG(0x43e0000000000000));
@@ -5964,7 +5972,7 @@ static int zend_jit_incdec(zend_llvm_ctx    &llvm_ctx,
 						bb_overflow,
 						bb_ok);
 					llvm_ctx.builder.SetInsertPoint(bb_overflow);
-#if defined(__x86_64)
+#if defined(__x86_64__)
 					zend_jit_save_zval_lval(llvm_ctx,
 						op1_addr,
 						LLVM_GET_LONG(0xc3e0000000000000));
@@ -5978,7 +5986,7 @@ static int zend_jit_incdec(zend_llvm_ctx    &llvm_ctx,
 					if (RETURN_VALUE_USED(opline)) {
 						//JIT: ZVAL_COPY_VALUE(EX_VAR(opline->result.var), var_ptr);
 						res = zend_jit_load_slot(llvm_ctx, opline->result.var);
-#if defined(__x86_64)
+#if defined(__x86_64__)
 						zend_jit_save_zval_lval(llvm_ctx,
 							res,
 							LLVM_GET_LONG(0x43e0000000000000));
@@ -6039,7 +6047,7 @@ static int zend_jit_incdec(zend_llvm_ctx    &llvm_ctx,
 						bb_overflow,
 						bb_ok);
 					llvm_ctx.builder.SetInsertPoint(bb_overflow);
-#if defined(__x86_64)
+#if defined(__x86_64__)
 					zend_jit_save_zval_lval(llvm_ctx,
 						op1_addr,
 						LLVM_GET_LONG(0x43e0000000000000));
@@ -6087,7 +6095,7 @@ static int zend_jit_incdec(zend_llvm_ctx    &llvm_ctx,
 						bb_overflow,
 						bb_ok);
 					llvm_ctx.builder.SetInsertPoint(bb_overflow);
-#if defined(__x86_64)
+#if defined(__x86_64__)
 					zend_jit_save_zval_lval(llvm_ctx,
 						op1_addr,
 						LLVM_GET_LONG(0xc3e0000000000000));
@@ -7123,11 +7131,15 @@ static int zend_jit_codegen_start_module(zend_jit_context *ctx, zend_op_array *o
     TheBuilder.setTargetOptions(TheOptions);
 #endif
 	
-#if defined(__x86_64)
+#if defined(__x86_64__)
 	TheBuilder.setMArch("x86-64");
 #else
 	TheBuilder.setMArch("x86");
 #endif	
+#if (LLVM_VERSION_MAJOR == 3 && LLVM_VERSION_MINOR >= 5)
+//	TheBuilder.setMAttrs(MAttrs);
+	TheBuilder.setMCPU(llvm::sys::getHostCPUName());
+#endif
 
 	llvm_ctx.target = TheBuilder.selectTarget();
 	llvm_ctx.engine = TheBuilder.create();
@@ -7168,7 +7180,7 @@ static int zend_jit_codegen_start_module(zend_jit_context *ctx, zend_op_array *o
 		llvm_ctx.mm_alloc = (void*)_zend_mm_alloc;
 		llvm_ctx.mm_free = (void*)_zend_mm_free;
 
-#if defined(i386) || defined(__x86_64__)
+#if defined(__i386__) || defined(__x86_64__)
 		/* A hack to call _zend_mm_alloc_int/_zend_mm_free_int directly */
 		unsigned char *p;
 
@@ -7383,7 +7395,10 @@ static int zend_jit_codegen_end_module(zend_jit_context *ctx, zend_op_array *op_
 #if ZEND_LLVM_DEBUG & ZEND_LLVM_DEBUG_DUMP
 	if (ZCG(accel_directives).jit_debug & (JIT_DEBUG_DUMP_ASM|JIT_DEBUG_DUMP_ASM_WITH_SSA)) {
 		PassManager APM;
+
+#if (LLVM_VERSION_MAJOR == 3 && LLVM_VERSION_MINOR < 5)
 		APM.add(new DataLayout(*llvm_ctx.engine->getDataLayout()));
+#endif
 
 //		Target->setAsmVerbosityDefault(true);
 		formatted_raw_ostream FOS(llvm::errs());
@@ -7637,7 +7652,10 @@ int zend_jit_codegen(zend_jit_context *ctx, zend_op_array *op_array TSRMLS_DC)
 
 	if ((ZCG(accel_directives).jit_opt & JIT_OPT_LLVM) != JIT_OPT_LLVM_O0) {
 		FunctionPassManager FPM(llvm_ctx.module);
+
+#if (LLVM_VERSION_MAJOR == 3 && LLVM_VERSION_MINOR < 5)
 		FPM.add(new DataLayout(*llvm_ctx.engine->getDataLayout()));
+#endif
 
 //		FPM.add(createTypeBasedAliasAnalysisPass());
 //		FPM.add(createBasicAliasAnalysisPass());

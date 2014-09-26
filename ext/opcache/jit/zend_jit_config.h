@@ -21,7 +21,7 @@
 #ifndef _ZEND_JIT_CONFIG_H_
 #define _ZEND_JIT_CONFIG_H_
 
-#if !defined(i386) && !defined(__x86_64__)
+#if !defined(__i386__) && !defined(__x86_64__)
 # error "JIT doesn't support this architecture yet"
 #endif
 
