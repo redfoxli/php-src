@@ -44,6 +44,7 @@ extern "C" {
 #endif
 
 ZEND_FASTCALL zend_string* zend_jit_helper_string_realloc(zend_string *str, size_t len, int persistent);
+ZEND_FASTCALL void zend_jit_helper_string_release(zend_string *str);
 
 #ifdef __cplusplus
 }

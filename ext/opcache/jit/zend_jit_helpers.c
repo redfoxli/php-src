@@ -35,6 +35,10 @@ ZEND_FASTCALL zend_string* zend_jit_helper_string_realloc(zend_string *str, size
 	return zend_string_realloc(str, len, persistent);
 }
 
+ZEND_FASTCALL void zend_jit_helper_string_release(zend_string *str) {
+	return zend_string_release(str);
+}
+
 /*
  * Local variables:
  * tab-width: 4
