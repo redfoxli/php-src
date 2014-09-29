@@ -1070,7 +1070,8 @@ static int zend_jit_call_handler(zend_llvm_ctx &llvm_ctx,
 				{"SEND_UNPACK",                     0},
 				{"POW",                             3},
 		        {"ASSIGN_POW",                      3},
-        		{"BIND_GLOBAL",                     3}
+        		{"BIND_GLOBAL",                     3},
+        		{"COALESCE",                        1}
 			};
 			typedef struct _zend_jit_op_type_desc {
 				const char *name;
@@ -7599,6 +7600,7 @@ static int zend_jit_codegen_ex(zend_jit_context *ctx,
 				case ZEND_JMPZ_EX:
 				case ZEND_JMPNZ_EX:
 				case ZEND_JMP_SET:
+				case ZEND_COALESCE:
 				case ZEND_NEW:
 				case ZEND_FE_RESET:
 					if (!zend_jit_handler(llvm_ctx, opline)) return 0;

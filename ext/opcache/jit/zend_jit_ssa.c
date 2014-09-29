@@ -664,7 +664,8 @@ void zend_jit_dump_ssa_line(zend_op_array *op_array, uint32_t line)
 		{"SEND_UNPACK",                     0}, //???
 		{"POW",                             0}, //???
 		{"ASSIGN_POW",                      0}, //???
-		{"BIND_GLOBAL",                     0}  //???
+		{"BIND_GLOBAL",                     0}, //???
+		{"COALESCE",                        0}  //???
 	};
 	zend_jit_func_info *info = JIT_DATA(op_array);
 	int *block_map = info->block_map;
@@ -1153,6 +1154,7 @@ int zend_jit_build_cfg(zend_jit_context *ctx, zend_op_array *op_array)
 			case ZEND_JMPZ_EX:
 			case ZEND_JMPNZ_EX:
 			case ZEND_JMP_SET:
+			case ZEND_COALESCE:
 				TARGET_BLOCK(opline->op2.jmp_addr - op_array->opcodes);
 				FOLLOW_BLOCK(i + 1);
 				break;
@@ -1317,6 +1319,7 @@ int zend_jit_build_cfg(zend_jit_context *ctx, zend_op_array *op_array)
 			case ZEND_JMPZ_EX:
 			case ZEND_JMPNZ_EX:
 			case ZEND_JMP_SET:
+			case ZEND_COALESCE:
 				record_successor(block, j, 0, block_map[opline->op2.jmp_addr - op_array->opcodes]);
 				record_successor(block, j, 1, j + 1);
 				break;

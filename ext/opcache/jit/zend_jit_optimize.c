@@ -319,6 +319,7 @@ static int zend_jit_sort_blocks(zend_jit_context *ctx, zend_op_array *op_array)
 				ZEND_VM_SET_OPCODE_HANDLER(op);
 				break;
 			case ZEND_JMP_SET:
+			case ZEND_COALESCE:
 			case ZEND_CATCH:
 			case ZEND_FE_RESET:
 			case ZEND_NEW:
@@ -1534,6 +1535,7 @@ static int zend_jit_calc_range(zend_jit_context *ctx, zend_op_array *op_array, i
 			}
 			break;
 		case ZEND_QM_ASSIGN:
+		case ZEND_COALESCE:
 			if (info->ssa[line].result_def == var) {
 				if (OP1_HAS_RANGE()) {
 					tmp->min = OP1_MIN_RANGE();
@@ -2899,6 +2901,7 @@ static void zend_jit_update_type_info(zend_jit_context *ctx,
 			UPDATE_SSA_TYPE(tmp, ssa[i].result_def);
 			break;
 		case ZEND_QM_ASSIGN:
+		case ZEND_COALESCE:
 			if (opline->op1_type == IS_CV || opline->op1_type == IS_VAR) {
 				tmp = (MAY_BE_DEF | MAY_BE_RCN | t1) & ~(MAY_BE_UNDEF|MAY_BE_REF);
 			} else {
@@ -3941,6 +3944,7 @@ static void zend_jit_update_type_info(zend_jit_context *ctx,
 // TODO: ???
 //			break;
 //		case ZEND_JMP_SET:
+//		case ZEND_COALESCE:
 // TODO: ???
 //			break;
 		case ZEND_FETCH_DIM_R:
