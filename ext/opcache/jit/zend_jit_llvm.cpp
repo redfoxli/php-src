@@ -5841,7 +5841,7 @@ static int zend_jit_add_string(zend_llvm_ctx    &llvm_ctx,
 		BasicBlock *bb_copy = NULL;
 		BasicBlock *bb_follow = NULL;
 		Value      *str, *op2_type = NULL;
-		Value      *op2 = zend_jit_load_var(llvm_ctx, opline->op2.var);
+		Value      *op2 = zend_jit_load_operand(llvm_ctx, opline->op2_type, opline->op2, OP2_SSA_VAR(), OP2_INFO(), 0, opline);
 
 		zend_jit_make_printable_zval(
 				llvm_ctx,
