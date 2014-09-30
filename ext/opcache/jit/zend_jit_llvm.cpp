@@ -1377,10 +1377,12 @@ static int zend_jit_handler(zend_llvm_ctx &ctx, zend_op *opline)
 
 /* {{{ static void zend_jit_error */
 static void zend_jit_error(zend_llvm_ctx    &llvm_ctx,
+                           zend_op          *opline,
                            int               type,
                            const char       *format,
-                           Value            *arg1,
-                           zend_op          *opline = NULL)
+                           Value            *arg1 = NULL,
+                           Value            *arg2 = NULL,
+                           Value            *arg3 = NULL)
 {
 	if (opline && !llvm_ctx.valid_opline) {
 		zend_jit_store_opline(llvm_ctx, opline, false);
@@ -1397,7 +1399,17 @@ static void zend_jit_error(zend_llvm_ctx    &llvm_ctx,
 		NULL,
 		NULL,
 		NULL);
-	if (arg1) {
+	if (arg3) {
+		llvm_ctx.builder.CreateCall5(_helper,
+			llvm_ctx.builder.getInt32(type),
+			LLVM_GET_CONST_STRING(format),
+			arg1, arg2, arg3);
+	} else if (arg2) {
+		llvm_ctx.builder.CreateCall4(_helper,
+			llvm_ctx.builder.getInt32(type),
+			LLVM_GET_CONST_STRING(format),
+			arg1, arg2);
+	} else if (arg1) {
 		llvm_ctx.builder.CreateCall3(_helper,
 			llvm_ctx.builder.getInt32(type),
 			LLVM_GET_CONST_STRING(format),
@@ -1412,10 +1424,12 @@ static void zend_jit_error(zend_llvm_ctx    &llvm_ctx,
 
 /* {{{ static void zend_jit_error_noreturn */
 static void zend_jit_error_noreturn(zend_llvm_ctx    &llvm_ctx,
+                                    zend_op          *opline,
                                     int               type,
                                     const char       *format,
-                                    Value            *arg1,
-                                    zend_op          *opline = NULL)
+                                    Value            *arg1 = NULL,
+                                    Value            *arg2 = NULL,
+                                    Value            *arg3 = NULL)
 {
 	CallInst *call;
 
@@ -1434,7 +1448,17 @@ static void zend_jit_error_noreturn(zend_llvm_ctx    &llvm_ctx,
 		NULL,
 		NULL,
 		NULL);
-	if (arg1) {
+	if (arg3) {
+		call = llvm_ctx.builder.CreateCall5(_helper,
+			llvm_ctx.builder.getInt32(type),
+			LLVM_GET_CONST_STRING(format),
+			arg1, arg2, arg3);
+	} else if (arg2) {
+		call = llvm_ctx.builder.CreateCall4(_helper,
+			llvm_ctx.builder.getInt32(type),
+			LLVM_GET_CONST_STRING(format),
+			arg1, arg2);
+	} else if (arg1) {
 		call = llvm_ctx.builder.CreateCall3(_helper,
 			llvm_ctx.builder.getInt32(type),
 			LLVM_GET_CONST_STRING(format),
@@ -2619,9 +2643,8 @@ static Value* zend_jit_load_cv(zend_llvm_ctx &llvm_ctx,
 					// Store "opline" in EX(opline) for error messages etc
 					JIT_CHECK(zend_jit_store_opline(llvm_ctx, opline, false));
 				}
-				zend_jit_error(llvm_ctx, E_NOTICE, "Undefined variable: %s",
-					LLVM_GET_CONST_STRING(llvm_ctx.op_array->vars[EX_VAR_TO_NUM(var)]->val),
-					opline);
+				zend_jit_error(llvm_ctx, opline, E_NOTICE, "Undefined variable: %s",
+					LLVM_GET_CONST_STRING(llvm_ctx.op_array->vars[EX_VAR_TO_NUM(var)]->val));
 				if (check && !(JIT_DATA(llvm_ctx.op_array)->flags & ZEND_JIT_FUNC_NO_FRAME)) {
 					JIT_CHECK(zend_jit_check_exception(llvm_ctx, opline));
 				}
@@ -2643,9 +2666,8 @@ static Value* zend_jit_load_cv(zend_llvm_ctx &llvm_ctx,
 					// Store "opline" in EX(opline) for error messages etc
 					JIT_CHECK(zend_jit_store_opline(llvm_ctx, opline, false));
 				}
-				zend_jit_error(llvm_ctx, E_NOTICE, "Undefined variable: %s",
-					LLVM_GET_CONST_STRING(llvm_ctx.op_array->vars[EX_VAR_TO_NUM(var)]->val),
-					opline);
+				zend_jit_error(llvm_ctx, opline, E_NOTICE, "Undefined variable: %s",
+					LLVM_GET_CONST_STRING(llvm_ctx.op_array->vars[EX_VAR_TO_NUM(var)]->val));
 				if (check && !(JIT_DATA(llvm_ctx.op_array)->flags & ZEND_JIT_FUNC_NO_FRAME)) {
 					JIT_CHECK(zend_jit_check_exception(llvm_ctx, opline));
 				}
@@ -2756,8 +2778,8 @@ static Value* zend_jit_load_operand(zend_llvm_ctx &llvm_ctx,
 					bb_fatal,
 					bb_follow);
 			llvm_ctx.builder.SetInsertPoint(bb_fatal);
-			zend_jit_error_noreturn(llvm_ctx, E_ERROR,
-					"Using $this when not in object context", NULL, opline);
+			zend_jit_error_noreturn(llvm_ctx, opline, E_ERROR,
+					"Using $this when not in object context");
 			llvm_ctx.builder.SetInsertPoint(bb_follow);
 		}
 		return this_ptr;
@@ -4305,7 +4327,7 @@ static int zend_jit_math(zend_llvm_ctx    &llvm_ctx,
 					bb_non_zero);
 				llvm_ctx.builder.SetInsertPoint(bb_zero);
 				// JIT: zend_error(E_WARNING, "Division by zero");
-				zend_jit_error(llvm_ctx, E_WARNING, "Division by zero", NULL, opline);
+				zend_jit_error(llvm_ctx, opline, E_WARNING, "Division by zero");
 				// JIT: ZVAL_BOOL(result, 0);
 //???				if (result_info & (MAY_BE_IN_REG)) {
 //???					zend_jit_save_to_reg(llvm_ctx, result_ssa_var, result_info, LLVM_GET_LONG(0));
@@ -4643,7 +4665,7 @@ static int zend_jit_math(zend_llvm_ctx    &llvm_ctx,
 					bb_non_zero);
 				llvm_ctx.builder.SetInsertPoint(bb_zero);
 				// JIT: zend_error(E_WARNING, "Division by zero");
-				zend_jit_error(llvm_ctx, E_WARNING, "Division by zero", NULL, opline);
+				zend_jit_error(llvm_ctx, opline, E_WARNING, "Division by zero");
 				// JIT: ZVAL_BOOL(result, 0);
 //???				if (result_info & (MAY_BE_IN_REG)) {
 //???					zend_jit_save_to_reg(llvm_ctx, result_ssa_var, result_info, LLVM_GET_LONG(0));
@@ -4875,7 +4897,7 @@ static int zend_jit_long_math(zend_llvm_ctx    &llvm_ctx,
 					bb_non_zero);
 				llvm_ctx.builder.SetInsertPoint(bb_zero);
 				// JIT: zend_error(E_WARNING, "Division by zero");
-				zend_jit_error(llvm_ctx, E_WARNING, "Division by zero", NULL, opline);
+				zend_jit_error(llvm_ctx, opline, E_WARNING, "Division by zero");
 				// JIT: ZVAL_BOOL(result, 0);
 //???				if (result_info & (MAY_BE_IN_REG)) {
 //???					zend_jit_save_to_reg(llvm_ctx, result_ssa_var, result_info, LLVM_GET_LONG(0));
@@ -5919,8 +5941,9 @@ static int zend_jit_incdec(zend_llvm_ctx    &llvm_ctx,
 		//JIT: zend_error_noreturn(E_ERROR, "Cannot increment/decrement overloaded objects nor string offsets");
 		zend_jit_error_noreturn(
 			llvm_ctx,
+			opline,
 			E_ERROR,
-			"Cannot increment/decrement overloaded objects nor string offsets", NULL);
+			"Cannot increment/decrement overloaded objects nor string offsets");
 		llvm_ctx.builder.SetInsertPoint(bb_not_null);
 	}
 
@@ -6473,6 +6496,7 @@ static int zend_jit_send_val(zend_llvm_ctx    &llvm_ctx,
 		llvm_ctx.builder.SetInsertPoint(bb_error);
 		zend_jit_error_noreturn(
 			llvm_ctx,
+			opline,
 			E_ERROR,
 			"Cannot pass parameter %d by reference",
 			llvm_ctx.builder.getInt32(opline->op2.opline_num));
@@ -7125,10 +7149,10 @@ static int zend_jit_init_fcall(zend_llvm_ctx    &llvm_ctx,
 			//JIT: zend_error_noreturn(E_ERROR, "Call to undefined function %s()", Z_STRVAL_P(fname));
 			zend_jit_error_noreturn(
 				llvm_ctx,
+				opline,
 				E_ERROR,
 				"Call to undefined function %s()",
-				LLVM_GET_CONST_STRING(Z_STRVAL_P(opline->op2.zv)),
-				opline);
+				LLVM_GET_CONST_STRING(Z_STRVAL_P(opline->op2.zv)));
 			//JIT: } else {
 			llvm_ctx.builder.SetInsertPoint(bb_found);
 		}
@@ -7163,6 +7187,99 @@ static int zend_jit_init_fcall(zend_llvm_ctx    &llvm_ctx,
 			llvm_ctx._execute_data,
 			offsetof(zend_execute_data, call),
 			PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_execute_data_type))), 4);
+
+	//JIT: ZEND_VM_NEXT_OPCODE();
+	llvm_ctx.valid_opline = 0;
+	return 1;
+}
+/* }}} */
+
+/* {{{ static int zend_jit_do_fcall */
+static int zend_jit_do_fcall(zend_llvm_ctx    &llvm_ctx,
+                               zend_jit_context *ctx,
+                               zend_op_array    *op_array,
+                               zend_op          *opline)
+{
+	zend_jit_func_info *info = JIT_DATA(op_array);
+	zend_jit_call_info *call_info = info->callee_info;
+	zend_function *func = NULL;
+	Value *func_addr = NULL;
+
+	while (call_info && call_info->caller_call_opline != opline) {
+		call_info = call_info->next_callee;
+	}
+	if (call_info && call_info->callee_func) {
+		func = call_info->callee_func;
+	}
+
+	//JIT: zend_execute_data *call = EX(call);
+	Value *call = llvm_ctx.builder.CreateAlignedLoad(
+			zend_jit_GEP(
+				llvm_ctx,
+				llvm_ctx._execute_data,
+				offsetof(zend_execute_data, call),
+				PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_execute_data_type))), 4);
+
+	if (func && func->type == ZEND_INTERNAL_FUNCTION) {
+		func_addr = llvm_ctx.builder.CreateIntToPtr(
+				LLVM_GET_LONG((zend_uintptr_t)func),
+				PointerType::getUnqual(llvm_ctx.zend_function_type));
+	} else {
+		//JIT: zend_function *fbc = call->func;
+		func_addr = llvm_ctx.builder.CreateAlignedLoad(
+				zend_jit_GEP(
+					llvm_ctx,
+					call,
+					offsetof(zend_execute_data, func),
+					PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_function_type))), 4);
+	}
+
+	//JIT: SAVE_OPLINE();
+	//JIT: EX(call) = call->prev_nested_call;
+	llvm_ctx.builder.CreateAlignedStore(
+		llvm_ctx.builder.CreateAlignedLoad(
+			zend_jit_GEP(
+				llvm_ctx,
+				call,
+				offsetof(zend_execute_data, prev_nested_call),
+				PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_function_type))), 4),
+		zend_jit_GEP(
+			llvm_ctx,
+			llvm_ctx._execute_data,
+			offsetof(zend_execute_data, call),
+			PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_execute_data_type))), 4);
+
+	if (func) {
+		if ((func->common.fn_flags & ZEND_ACC_ABSTRACT) != 0) {
+			zend_jit_error_noreturn(llvm_ctx, opline, E_ERROR, 
+				"Cannot call abstract method %s::%s()",
+				LLVM_GET_CONST_STRING(func->common.scope->name->val),
+				LLVM_GET_CONST_STRING(func->common.function_name->val));
+			llvm_ctx.valid_opline = 0;
+			return 1;
+
+		}
+		if ((func->common.fn_flags & ZEND_ACC_DEPRECATED) != 0) {
+			zend_jit_error(llvm_ctx, opline, E_DEPRECATED,
+				"Function %s%s%s() is deprecated",
+				func->common.scope ? LLVM_GET_CONST_STRING(func->common.scope->name->val) : LLVM_GET_CONST_STRING(""),
+				func->common.scope ? LLVM_GET_CONST_STRING("::") : LLVM_GET_CONST_STRING(""),
+				LLVM_GET_CONST_STRING(func->common.function_name->val));
+			zend_jit_check_exception(llvm_ctx, opline);
+		}
+	} else {
+		//JIT: if (UNEXPECTED((fbc->common.fn_flags & (ZEND_ACC_ABSTRACT|ZEND_ACC_DEPRECATED)) != 0)) {
+		//JIT: if (UNEXPECTED((fbc->common.fn_flags & ZEND_ACC_ABSTRACT) != 0)) {
+		//JIT: zend_error_noreturn(E_ERROR, "Cannot call abstract method %s::%s()", fbc->common.scope->name->val, fbc->common.function_name->val);
+		//JIT: if (UNEXPECTED((fbc->common.fn_flags & ZEND_ACC_DEPRECATED) != 0)) {
+		//JIT: zend_error(E_DEPRECATED, "Function %s%s%s() is deprecated",
+		//       fbc->common.scope ? fbc->common.scope->name->val : "",
+		//       fbc->common.scope ? "::" : "",
+		//       fbc->common.function_name->val);
+		//JIT: if (UNEXPECTED(EG(exception) != NULL)) HANDLE_EXCEPTION();
+		//???...
+	}
+	//???...
 
 	//JIT: ZEND_VM_NEXT_OPCODE();
 	llvm_ctx.valid_opline = 0;
