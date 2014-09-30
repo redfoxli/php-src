@@ -7070,20 +7070,23 @@ static int zend_jit_init_fcall(zend_llvm_ctx    &llvm_ctx,
                                zend_op_array    *op_array,
                                zend_op          *opline)
 {
+	zend_jit_func_info *info = JIT_DATA(op_array);
+	zend_jit_call_info *call_info = info->callee_info;
 	zend_function *func = NULL;
 	Value *func_addr = NULL;
 
-	if ((func = (zend_function*)zend_hash_find_ptr(EG(function_table), Z_STR_P(opline->op2.zv))) != NULL &&
-	    func->type == ZEND_INTERNAL_FUNCTION) {
+	while (call_info && call_info->caller_init_opline != opline) {
+		call_info = call_info->next_callee;
+	}
+	if (call_info && call_info->callee_func) {
+		func = call_info->callee_func;
+	}
+
+	if (func && func->type == ZEND_INTERNAL_FUNCTION) {
 		func_addr = llvm_ctx.builder.CreateIntToPtr(
 				LLVM_GET_LONG((zend_uintptr_t)func),
 				PointerType::getUnqual(llvm_ctx.zend_function_type));
 	} else {
-		func = NULL;
-		if (ctx->main_persistent_script->function_table.nNumOfElements) {
-			func = (zend_function*)zend_hash_find_ptr(&ctx->main_persistent_script->function_table, Z_STR_P(opline->op2.zv));
-		}
-		
 		BasicBlock *bb_not_cached = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 		BasicBlock *bb_common = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 		PHI_DCL(func_addr, 2);
