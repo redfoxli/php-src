@@ -3649,7 +3649,6 @@ static void zend_jit_update_type_info(zend_jit_context *ctx,
 			}
 			break;
 		case ZEND_CONCAT:
-		case ZEND_INIT_STRING:
 		case ZEND_ADD_CHAR:
 		case ZEND_ADD_STRING:
 		case ZEND_ADD_VAR:
