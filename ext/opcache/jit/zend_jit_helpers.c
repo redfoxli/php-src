@@ -31,6 +31,10 @@
 #include "jit/zend_jit_config.h"
 #include "jit/zend_jit_helpers.h"
 
+ZEND_FASTCALL zend_string* zend_jit_helper_string_alloc(size_t len, int persistent) {
+	return zend_string_alloc(len, persistent);
+}
+
 ZEND_FASTCALL zend_string* zend_jit_helper_string_realloc(zend_string *str, size_t len, int persistent) {
 	return zend_string_realloc(str, len, persistent);
 }
@@ -39,8 +43,54 @@ ZEND_FASTCALL void zend_jit_helper_string_release(zend_string *str) {
 	return zend_string_release(str);
 }
 
-ZEND_FASTCALL void zend_jit_helper_check_type_hint(zend_function *zf, uint32_t arg_num, zval *arg, zend_ulong fetch_type TSRMLS_DC)
-{
+ZEND_FASTCALL int zend_jit_helper_handle_numeric_str(zend_string *str, zend_ulong *idx) {
+	register const char *tmp = str->val;
+
+	if (*tmp > '9') {
+		return 0;
+	} else if (*tmp < '0') {
+		if (*tmp != '-') {
+			return 0;
+		}
+		tmp++;
+		if (*tmp > '9' || *tmp < '0') {
+			return 0;
+		}
+	}
+	return _zend_handle_numeric_str_ex(str->val, str->len, idx);
+}
+
+ZEND_FASTCALL zend_ulong zend_jit_helper_dval_to_lval(double dval) {
+	return zend_dval_to_lval(dval);
+}
+
+ZEND_FASTCALL zend_ulong zend_jit_helper_slow_str_index(zval *dim, uint32_t type) {
+	switch (Z_TYPE_P(dim)) {
+		case IS_STRING:
+			if (IS_LONG == is_numeric_string(Z_STRVAL_P(dim), Z_STRLEN_P(dim), NULL, NULL, -1)) {
+				break;
+			}
+			if (type != BP_VAR_IS) {
+				zend_error(E_WARNING, "Illegal string offset '%s'", Z_STRVAL_P(dim));
+			}
+			break;
+		case IS_DOUBLE:
+		case IS_NULL:
+		case IS_TRUE:
+		case IS_FALSE:
+			if (type != BP_VAR_IS) {
+				zend_error(E_NOTICE, "String offset cast occurred");
+			}
+			break;
+		default:
+			zend_error(E_WARNING, "Illegal offset type");
+			break;
+	}
+
+	return zval_get_long(dim);
+}
+
+ZEND_FASTCALL void zend_jit_helper_check_type_hint(zend_function *zf, uint32_t arg_num, zval *arg, zend_ulong fetch_type) {
 	zend_arg_info *cur_arg_info;
 	char *need_msg;
 	zend_class_entry *ce;
