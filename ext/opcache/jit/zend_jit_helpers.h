@@ -45,6 +45,7 @@ extern "C" {
 
 ZEND_FASTCALL zend_string* zend_jit_helper_string_realloc(zend_string *str, size_t len, int persistent);
 ZEND_FASTCALL void zend_jit_helper_string_release(zend_string *str);
+ZEND_FASTCALL void zend_jit_helper_check_type_hint(zend_function *zf, uint32_t arg_num, zval *arg, zend_ulong fetch_type TSRMLS_DC);
 
 #ifdef __cplusplus
 }
