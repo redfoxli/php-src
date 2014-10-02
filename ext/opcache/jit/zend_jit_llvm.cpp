@@ -8217,7 +8217,7 @@ static Value* zend_jit_vm_stack_new_page(zend_llvm_ctx    &llvm_ctx,
 			llvm_ctx.builder.CreatePtrToInt(
 				page,
 				LLVM_GET_LONG_TY(llvm_ctx.context)),
-			LLVM_GET_LONG(ZEND_MM_ALIGNED_SIZE(sizeof(struct _zend_vm_stack)))),
+			LLVM_GET_LONG(ZEND_MM_ALIGNED_SIZE(ZEND_VM_STACK_HEADER_SLOTS * sizeof(zval)))),
 		zend_jit_GEP(
 			llvm_ctx,
 			page,
