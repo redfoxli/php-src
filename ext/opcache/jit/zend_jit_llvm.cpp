@@ -2335,10 +2335,7 @@ static int zend_jit_empty_str(zend_llvm_ctx &llvm_ctx,
                               Value       *zval_addr)
 {
 	llvm_ctx.builder.CreateAlignedStore(
-		//??? Type mismatch
-		llvm_ctx.builder.CreateBitCast(
-			llvm_ctx._CG_empty_string,
-			PointerType::getUnqual(llvm_ctx.zend_string_type)),
+		llvm_ctx._CG_empty_string,
 		zend_jit_GEP(
 			llvm_ctx,
 			zval_addr,
@@ -11146,7 +11143,7 @@ static int zend_jit_codegen_start_module(zend_jit_context *ctx, zend_op_array *o
 	// Create LLVM reference to CG(empty_string)
 	llvm_ctx._CG_empty_string = new GlobalVariable(
 			*llvm_ctx.module,
-			PointerType::getUnqual(llvm_ctx.zend_string_type),
+			llvm_ctx.zend_string_type,
 			false,
 			GlobalVariable::ExternalLinkage,
 			0,
