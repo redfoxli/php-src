@@ -2018,6 +2018,45 @@ static Value* zend_jit_slow_str_index(zend_llvm_ctx &llvm_ctx,
 }
 /* }}} */
 
+/* {{{ static Value* zend_jit_read_dimension */
+static Value* zend_jit_read_dimension(zend_llvm_ctx  &llvm_ctx,
+                                      Value          *handler,
+                                      Value          *obj,
+                                      Value          *dim,
+                                      uint32_t        fetch_type,
+                                      Value          *rzv,
+                                      zend_op        *opline)
+{
+	if (!llvm_ctx.valid_opline) {
+		zend_jit_store_opline(llvm_ctx, opline, false);
+	}
+
+	std::vector<llvm::Type *> args;
+	args.push_back(llvm_ctx.zval_ptr_type);
+	args.push_back(llvm_ctx.zval_ptr_type);
+	args.push_back(Type::getInt32Ty(llvm_ctx.context)); 
+	args.push_back(llvm_ctx.zval_ptr_type);
+	Type *func_t = FunctionType::get(
+			llvm_ctx.zval_ptr_type,
+			ArrayRef<Type*>(args),
+			0);
+
+	Value *helper = llvm_ctx.builder.CreateBitCast(
+			handler,
+			PointerType::getUnqual(func_t));
+
+	CallInst *call = llvm_ctx.builder.CreateCall4(
+			helper, 
+			obj, 
+			dim,
+			llvm_ctx.builder.getInt32(fetch_type),
+			rzv,
+			ZEND_JIT_SYM("read_dimension"));
+
+	return call;
+}
+/* }}} */
+
 /* Common APIs */
 
 /* {{{ static int zend_jit_throw_exception */
@@ -4689,43 +4728,23 @@ static Value* zend_jit_fetch_dimension_address_read(zend_llvm_ctx     &llvm_ctx,
 					NULL);
 		}
 
-		if (!llvm_ctx.valid_opline) {
-			zend_jit_store_opline(llvm_ctx, opline, false);
-		}
-
-		std::vector<llvm::Type *> args;
-		args.push_back(llvm_ctx.zval_ptr_type);
-		args.push_back(llvm_ctx.zval_ptr_type);
-		args.push_back(Type::getInt32Ty(llvm_ctx.context)); 
-		args.push_back(llvm_ctx.zval_ptr_type);
-		Type *func_t = FunctionType::get(
-				llvm_ctx.zval_ptr_type,
-				ArrayRef<Type*>(args),
-				0);
-
-		Value *helper = llvm_ctx.builder.CreateBitCast(
-				read_dim_handler, 
-				PointerType::getUnqual(func_t));
-
+		znode_op dummy;
 		Value *rzv = zend_jit_get_stack_slot(llvm_ctx, 0);
-
-		CallInst *call = llvm_ctx.builder.CreateCall4(
-				helper, container, dim, llvm_ctx.builder.getInt32(fetch_type), rzv, ZEND_JIT_SYM("read_dimension"));
+		Value *rv = zend_jit_read_dimension(llvm_ctx, read_dim_handler, container, dim, fetch_type, rzv, opline);
 
 		BasicBlock *bb_found = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 		BasicBlock *bb_not_found = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 		zend_jit_expected_br(
 			llvm_ctx,
-			llvm_ctx.builder.CreateIsNotNull(call),
+			llvm_ctx.builder.CreateIsNotNull(rv),
 			bb_found,
 			bb_not_found);
 
 		llvm_ctx.builder.SetInsertPoint(bb_found);
 
-		znode_op dummy;
 		//TODO: dummy....
-		zend_jit_try_addref(llvm_ctx, call, NULL, IS_VAR, dummy, -1);
-		PHI_ADD(ret, call);
+		zend_jit_try_addref(llvm_ctx, rv, NULL, IS_VAR, dummy, -1);
+		PHI_ADD(ret, rv);
 		llvm_ctx.builder.CreateBr(bb_finish);
 
 		llvm_ctx.builder.SetInsertPoint(bb_not_found);
