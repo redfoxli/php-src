@@ -4528,6 +4528,7 @@ static Value* zend_jit_fetch_dimension_address_read(zend_llvm_ctx     &llvm_ctx,
 	BasicBlock *bb_finish = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 	PHI_DCL(ret, 7);
 
+	container = zend_jit_deref(llvm_ctx, container, container_info);
 	if ((container_info & MAY_BE_ARRAY)) {
 		Value *item;
 		znode_op dummy;
