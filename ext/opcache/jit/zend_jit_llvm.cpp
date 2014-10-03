@@ -2555,8 +2555,7 @@ static Value* zend_jit_load_array_ht(zend_llvm_ctx &llvm_ctx,
 				llvm_ctx,
 				arr_addr,
 				offsetof(zend_array, ht),
-				PointerType::getUnqual(
-						llvm_ctx.HashTable_type));
+				PointerType::getUnqual(llvm_ctx.HashTable_type));
 }
 /* }}} */
 
@@ -3673,8 +3672,7 @@ static Value* zend_jit_hash_index_find(zend_llvm_ctx    &llvm_ctx,
 			llvm_ctx,
 			(void*)zend_hash_index_find,
 			ZEND_JIT_SYM("zend_hash_index_find"),
-			ZEND_JIT_HELPER_ARG1_NOALIAS | ZEND_JIT_HELPER_ARG1_NOCAPTURE |
-			ZEND_JIT_HELPER_ARG2_NOALIAS | ZEND_JIT_HELPER_ARG2_NOCAPTURE,
+			ZEND_JIT_HELPER_ARG1_NOALIAS | ZEND_JIT_HELPER_ARG1_NOCAPTURE,
 			llvm_ctx.zval_ptr_type,
 			PointerType::getUnqual(llvm_ctx.HashTable_type),
 			LLVM_GET_LONG_TY(llvm_ctx.context),
@@ -3743,7 +3741,6 @@ static Value* zend_jit_hash_index_update(zend_llvm_ctx    &llvm_ctx,
 			(void*)_zend_hash_index_update,
 			ZEND_JIT_SYM("_zend_hash_index_update"),
 			ZEND_JIT_HELPER_ARG1_NOALIAS | ZEND_JIT_HELPER_ARG1_NOCAPTURE |
-			ZEND_JIT_HELPER_ARG2_NOALIAS | ZEND_JIT_HELPER_ARG2_NOCAPTURE |
 			ZEND_JIT_HELPER_ARG3_NOALIAS | ZEND_JIT_HELPER_ARG3_NOCAPTURE,
 			llvm_ctx.zval_ptr_type,
 			PointerType::getUnqual(llvm_ctx.HashTable_type),
@@ -4062,7 +4059,7 @@ numeric_dim:
 
 			llvm_ctx.builder.SetInsertPoint(bb_handle_numeric);
 
-			PHI_ADD(index, hval);
+			PHI_ADD(index, llvm_ctx.builder.CreateAlignedLoad(hval, 4));
 			llvm_ctx.builder.CreateBr(bb_fetch_number_dim);
 
 			llvm_ctx.builder.SetInsertPoint(bb_handle_string);
@@ -4312,6 +4309,7 @@ numeric_dim:
 		}
 
 		PHI_SET(index, num_idx, LLVM_GET_LONG_TY(llvm_ctx.context));
+
 		if (array_info & MAY_BE_ARRAY_KEY_LONG) {
 			BasicBlock *bb_found = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 			BasicBlock *bb_not_found = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
@@ -4332,21 +4330,22 @@ numeric_dim:
 
 		switch (fetch_type) {
 			case BP_VAR_R:
-				zend_jit_error(llvm_ctx, opline, E_NOTICE,"Undefined offset: " ZEND_ULONG_FMT, num_idx);
+				zend_jit_error(llvm_ctx, opline, E_NOTICE, "Undefined offset: " ZEND_ULONG_FMT, num_idx);
 			case BP_VAR_UNSET:
 			case BP_VAR_IS:
 				PHI_ADD(ret, llvm_ctx._EG_uninitialized_zval);
 				break;
 			case BP_VAR_RW:
-				zend_jit_error(llvm_ctx, opline, E_NOTICE,"Undefined offset: " ZEND_ULONG_FMT, num_idx);
-			case BP_VAR_W: {
-				Value *zv = zend_jit_hash_index_update(
-					llvm_ctx,
-					ht,
-					num_idx,
-					llvm_ctx._EG_uninitialized_zval,
-					opline);
-				PHI_ADD(ret, zv);
+				zend_jit_error(llvm_ctx, opline, E_NOTICE, "Undefined offset: " ZEND_ULONG_FMT, num_idx);
+			case BP_VAR_W: 
+				{
+					Value *zv = zend_jit_hash_index_update(
+						llvm_ctx,
+						ht,
+						num_idx,
+						llvm_ctx._EG_uninitialized_zval,
+						opline);
+					PHI_ADD(ret, zv);
 				}
 				break;
 		}
@@ -4700,7 +4699,7 @@ static Value* zend_jit_fetch_dimension_address_read(zend_llvm_ctx     &llvm_ctx,
 		args.push_back(Type::getInt32Ty(llvm_ctx.context)); 
 		args.push_back(llvm_ctx.zval_ptr_type);
 		Type *func_t = FunctionType::get(
-				PointerType::getUnqual(llvm_ctx.zval_ptr_type),
+				llvm_ctx.zval_ptr_type,
 				ArrayRef<Type*>(args),
 				0);
 
@@ -4745,6 +4744,7 @@ static Value* zend_jit_fetch_dimension_address_read(zend_llvm_ctx     &llvm_ctx,
 	llvm_ctx.builder.SetInsertPoint(bb_finish);
 
 	PHI_SET(ret, retval, llvm_ctx.zval_ptr_type);
+
 	return retval;
 }
 /* }}} */
@@ -10796,9 +10796,11 @@ static int zend_jit_codegen_ex(zend_jit_context *ctx,
 				case ZEND_FETCH_DIM_W:
 					if (!zend_jit_fetch_dim(llvm_ctx, ctx, op_array, opline, BP_VAR_W)) return 0;
 					break;
+#endif
 				case ZEND_FETCH_DIM_R:
 					if (!zend_jit_fetch_dim_r(llvm_ctx, ctx, op_array, opline)) return 0;
 					break;
+#if 0
 				case ZEND_FETCH_DIM_RW:
 					if (!zend_jit_fetch_dim(llvm_ctx, ctx, op_array, opline, BP_VAR_RW)) return 0;
 					break;
