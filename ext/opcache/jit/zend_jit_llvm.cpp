@@ -1203,6 +1203,103 @@ static int zend_jit_call_handler(zend_llvm_ctx &llvm_ctx,
 }
 /* }}} */
 
+/* {{{ static int is_long_numeric_string */
+static int is_long_numeric_string(const char *str, int length)
+{
+	const char *ptr;
+	int base = 10, digits = 0, dp_or_e = 0;
+	zend_uchar type;
+
+	if (!length) {
+		return 0;
+	}
+
+	/* Skip any whitespace
+	 * This is much faster than the isspace() function */
+	while (*str == ' ' || *str == '\t' || *str == '\n' || *str == '\r' || *str == '\v' || *str == '\f') {
+		str++;
+		length--;
+	}
+	ptr = str;
+
+	if (*ptr == '-' || *ptr == '+') {
+		ptr++;
+	}
+
+	if (ZEND_IS_DIGIT(*ptr)) {
+		/* Handle hex numbers
+		 * str is used instead of ptr to disallow signs and keep old behavior */
+		if (length > 2 && *str == '0' && (str[1] == 'x' || str[1] == 'X')) {
+			base = 16;
+			ptr += 2;
+		}
+
+		/* Skip any leading 0s */
+		while (*ptr == '0') {
+			ptr++;
+		}
+
+		for (type = IS_LONG;; digits++, ptr++) {
+check_digits:
+			if (ZEND_IS_DIGIT(*ptr) || (base == 16 && ZEND_IS_XDIGIT(*ptr))) {
+				continue;
+			} else if (base == 10) {
+				if (*ptr == '.' && dp_or_e < 1) {
+					goto process_double;
+				} else if ((*ptr == 'e' || *ptr == 'E') && dp_or_e < 2) {
+					const char *e = ptr + 1;
+
+					if (*e == '-' || *e == '+') {
+						ptr = e++;
+					}
+					if (ZEND_IS_DIGIT(*e)) {
+						goto process_double;
+					}
+				}
+			}
+			break;
+		}
+
+		if (base == 10) {
+			if (digits >= MAX_LENGTH_OF_LONG) {
+				dp_or_e = -1;
+				goto process_double;
+			}
+		} else if (!(digits < SIZEOF_LONG * 2 || (digits == SIZEOF_LONG * 2 && ptr[-digits] <= '7'))) {
+			type = IS_DOUBLE;
+		}
+	} else if (*ptr == '.' && ZEND_IS_DIGIT(ptr[1])) {
+process_double:
+		type = IS_DOUBLE;
+
+		if (dp_or_e != -1) {
+			dp_or_e = (*ptr++ == '.') ? 1 : 2;
+			goto check_digits;
+		}
+	} else {
+		return 0;
+	}
+
+	if (ptr != str + length) {
+		return -1;
+	}
+
+	if (type == IS_DOUBLE) {
+		return 0;
+	}
+
+	if (digits == MAX_LENGTH_OF_LONG - 1) {
+		int cmp = strcmp(&ptr[-digits], long_min_digits);
+
+		if (!(cmp < 0 || (cmp == 0 && *str == '-'))) {
+			return 0;
+		}
+	}
+
+	return 1;
+}
+/* }}} */
+
 #define ZEND_JIT_HELPER_FAST_CALL      (1<<0)
 #define ZEND_JIT_HELPER_VAR_ARGS       (1<<1)
 #define ZEND_JIT_HELPER_READ_NONE      (1<<2)
@@ -1966,9 +2063,13 @@ static void zend_jit_handle_numeric(zend_llvm_ctx &llvm_ctx,
                                     Value         *offset,
                                     Value         *index,
                                     BasicBlock    *bb_numeric,
-                                    BasicBlock    *bb_string)
+                                    BasicBlock    *bb_string,
+                                    zend_op       *opline)
 {
-	
+	if (!llvm_ctx.valid_opline) {
+		zend_jit_store_opline(llvm_ctx, opline, false);
+	}
+
 	Function *_helper = zend_jit_get_helper(
 			llvm_ctx,
 			(void*)zend_jit_helper_handle_numeric_str,
@@ -4110,7 +4211,8 @@ numeric_dim:
 				str, 
 				hval,
 				bb_handle_numeric,
-				bb_handle_string);
+				bb_handle_string,
+				opline);
 
 			llvm_ctx.builder.SetInsertPoint(bb_handle_numeric);
 
@@ -4464,10 +4566,16 @@ static Value* zend_jit_str_offset_index(zend_llvm_ctx &llvm_ctx,
 
 		switch (Z_TYPE_P(dim_op.zv)) {
 			case IS_STRING:
-				if ((IS_LONG == is_numeric_string(Z_STRVAL_P(dim_op.zv), Z_STRLEN_P(dim_op.zv), NULL, NULL, -1))) {
+				if ((is_long = is_long_numeric_string(Z_STRVAL_P(dim_op.zv), Z_STRLEN_P(dim_op.zv))) == 1) {
 					break;
-				} 
-				if (fetch_type != BP_VAR_IS) {
+				} else if (is_long == -1) {
+					zend_jit_error(
+							llvm_ctx,
+							opline,
+							E_NOTICE,
+							"%s",
+							LLVM_GET_CONST_STRING("A non well formed numeric value encountered"));
+				} else if (fetch_type != BP_VAR_IS) {
 					zend_jit_error(llvm_ctx, opline, E_WARNING, "Illegal string offset '%s'",
 						   LLVM_GET_CONST_STRING(Z_STRVAL_P(dim_op.zv)));
 				}
