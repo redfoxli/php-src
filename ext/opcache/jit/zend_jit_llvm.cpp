@@ -2544,6 +2544,20 @@ static Value* zend_jit_load_dval(zend_llvm_ctx &llvm_ctx,
 }
 /* }}} */
 
+/* {{{ static Value* zend_jit_load_ind */
+static Value* zend_jit_load_ind(zend_llvm_ctx &llvm_ctx,
+                                Value         *zval_addr)
+{
+	return llvm_ctx.builder.CreateAlignedLoad(
+			zend_jit_GEP(
+				llvm_ctx,
+				zval_addr,
+				offsetof(zval, value.zv),
+				PointerType::getUnqual(
+						llvm_ctx.zval_ptr_type)), 4);
+}
+/* }}} */
+
 /* {{{ static Value* zend_jit_load_res */
 static Value* zend_jit_load_res(zend_llvm_ctx &llvm_ctx,
                                 Value         *zval_addr)
@@ -3990,7 +4004,7 @@ static Value* zend_jit_fetch_dimension_address_inner(zend_llvm_ctx   &llvm_ctx,
 	BasicBlock *bb_finish = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 	PHI_DCL(offset, 3);
 	PHI_DCL(index, 7);
-	PHI_DCL(ret, 5);
+	PHI_DCL(ret, 6);
 
 	// JIT: switch(dim->type)
 	if (dim_op_type == IS_CONST) {
@@ -4302,6 +4316,9 @@ numeric_dim:
 		if (array_info & MAY_BE_ARRAY_KEY_STRING) {
 			BasicBlock *bb_found = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 			BasicBlock *bb_not_found = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+			BasicBlock *bb_indirect = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+			BasicBlock *bb_not_ind = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+			BasicBlock *bb_cont = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 			Value *zv = zend_jit_hash_find(llvm_ctx, ht, str);
 
 			zend_jit_unexpected_br(llvm_ctx,
@@ -4311,6 +4328,31 @@ numeric_dim:
 
 			llvm_ctx.builder.SetInsertPoint(bb_found);
 
+			Value *zv_type = zend_jit_load_type(llvm_ctx, zv, -1);
+
+			//JIT: if (UNEXPECTED(Z_TYPE_P(retval) == IS_INDIRECT))
+			zend_jit_unexpected_br(llvm_ctx,
+					llvm_ctx.builder.CreateICmpEQ(
+						zv_type,
+						llvm_ctx.builder.getInt8(IS_INDIRECT)),
+					bb_indirect,
+					bb_not_ind);
+			llvm_ctx.builder.SetInsertPoint(bb_not_ind);
+			PHI_ADD(ret, zv);
+			llvm_ctx.builder.CreateBr(bb_finish);
+
+			llvm_ctx.builder.SetInsertPoint(bb_indirect);
+			zv = zend_jit_load_ind(llvm_ctx, zv);
+			zv_type = zend_jit_load_type(llvm_ctx, zv, -1);
+
+			zend_jit_unexpected_br(llvm_ctx,
+					llvm_ctx.builder.CreateICmpEQ(
+						zv_type,
+						llvm_ctx.builder.getInt8(IS_UNDEF)),
+					bb_not_found,
+					bb_cont);
+
+			llvm_ctx.builder.SetInsertPoint(bb_cont);
 			PHI_ADD(ret, zv);
 			llvm_ctx.builder.CreateBr(bb_finish);
 
@@ -4803,8 +4845,21 @@ static Value* zend_jit_fetch_dimension_address_read(zend_llvm_ctx     &llvm_ctx,
 
 		llvm_ctx.builder.SetInsertPoint(bb_found);
 
+		BasicBlock *bb_same = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+		BasicBlock *bb_not_same = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+
+		zend_jit_unexpected_br(llvm_ctx,
+				llvm_ctx.builder.CreateICmpEQ(
+					rzv, rv),
+				bb_same,
+				bb_not_same);
+
+		llvm_ctx.builder.SetInsertPoint(bb_not_same);
 		//TODO: dummy....
 		zend_jit_try_addref(llvm_ctx, rv, NULL, IS_VAR, dummy, -1);
+		llvm_ctx.builder.CreateBr(bb_same);
+		llvm_ctx.builder.SetInsertPoint(bb_same);
+
 		PHI_ADD(ret, rv);
 		llvm_ctx.builder.CreateBr(bb_finish);
 
@@ -8230,8 +8285,10 @@ static int zend_jit_fetch_dim_r(zend_llvm_ctx     &llvm_ctx,
 	znode_op dummy;
 	Value *var_ptr = NULL;
 	Value *dim_ptr = NULL;
+	Value *result = NULL;
 	zend_bool may_threw = 0;
 
+	result = zend_jit_load_slot(llvm_ctx, opline->result.var);
 	zend_jit_load_operands(llvm_ctx, op_array, opline, &var_ptr, &dim_ptr);
 
 	Value *ret = zend_jit_fetch_dimension_address_read(
@@ -8251,7 +8308,7 @@ static int zend_jit_fetch_dim_r(zend_llvm_ctx     &llvm_ctx,
 
 	zend_jit_copy_value(
 			llvm_ctx, 
-			zend_jit_load_slot(llvm_ctx, opline->result.var),
+			result,
 			RES_INFO(),
 			ret,
 			NULL,
