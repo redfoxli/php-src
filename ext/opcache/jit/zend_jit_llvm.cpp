@@ -270,6 +270,7 @@ typedef struct _zend_llvm_ctx {
 
     Value           *_execute_data;
 	GlobalVariable  *_CG_empty_string;
+	GlobalVariable  *_CG_one_char_string;
 	GlobalVariable  *_CG_arena;
 	GlobalVariable  *_EG_exception;
 	GlobalVariable  *_EG_argument_stack;
@@ -339,6 +340,7 @@ typedef struct _zend_llvm_ctx {
 		engine = NULL;
 
 		_CG_empty_string = NULL;
+		_CG_one_char_string = NULL;
 		_CG_arena = NULL;
 		_EG_exception = NULL;
 		_EG_argument_stack = NULL;
@@ -4511,13 +4513,13 @@ static Value* zend_jit_fetch_dimension_address_read(zend_llvm_ctx     &llvm_ctx,
                                                     zend_class_entry  *scope,
                                                     Value             *container,
                                                     int                container_ssa,
-                                                    uint32_t          container_info,
+                                                    uint32_t           container_info,
                                                     Value             *dim,
                                                     int                dim_ssa,
-                                                    uint32_t          dim_info,
+                                                    uint32_t           dim_info,
                                                     znode_op           dim_op,
-                                                    uint32_t          dim_op_type,
-                                                    uint32_t          fetch_type,
+                                                    uint32_t           dim_op_type,
+                                                    uint32_t           fetch_type,
                                                     zend_op           *opline,
                                                     zend_bool         *may_threw)
 {
@@ -4559,14 +4561,16 @@ static Value* zend_jit_fetch_dimension_address_read(zend_llvm_ctx     &llvm_ctx,
 				dim_op,
 				fetch_type,
 				opline);
+
 		zend_jit_try_addref(llvm_ctx, item, NULL, IS_VAR, dummy, -1);
 		PHI_ADD(ret, item);
 		llvm_ctx.builder.CreateBr(bb_finish);
 	}
 
 	if ((container_info & MAY_BE_STRING)) {
-		Value *index, *tmp, *str;
+		Value *index, *tmp, *str, *c;
 		BasicBlock *bb_string;
+		PHI_DCL(one_char, 2);
 
 		if (bb_follow) {
 			llvm_ctx.builder.SetInsertPoint(bb_follow);
@@ -4641,12 +4645,68 @@ static Value* zend_jit_fetch_dimension_address_read(zend_llvm_ctx     &llvm_ctx,
 		// JIT: Single char 
 		llvm_ctx.builder.SetInsertPoint(ret_char);
 
+#if 0 
+		c = llvm_ctx.builder.CreateAlignedLoad(
+				zend_jit_load_str_val(llvm_ctx, 
+					zend_jit_load_str(llvm_ctx, container)), 1);
+
+		BasicBlock *bb_cg_char = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+		BasicBlock *bb_normal_char = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+		BasicBlock *bb_do_ret = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+
+		zend_jit_expected_br(llvm_ctx,
+				llvm_ctx.builder.CreateIsNotNull(
+					llvm_ctx.builder.CreateAlignedLoad(
+						llvm_ctx.builder.CreateGEP(
+							llvm_ctx._CG_one_char_string,
+							c), 4)),
+				bb_cg_char,
+				bb_normal_char);
+
+		llvm_ctx.builder.SetInsertPoint(bb_cg_char);
+		str = llvm_ctx.builder.CreateAlignedLoad(
+				llvm_ctx.builder.CreateGEP(
+					llvm_ctx._CG_one_char_string,
+					c), 4);
+		PHI_ADD(one_char, str);
+		llvm_ctx.builder.CreateBr(bb_do_ret);
+
+		llvm_ctx.builder.SetInsertPoint(bb_normal_char);
 		str = zend_jit_string_alloc(llvm_ctx, LLVM_GET_LONG(1));
 
 		llvm_ctx.builder.CreateAlignedStore(
 			llvm_ctx.builder.CreateAlignedLoad(
 				llvm_ctx.builder.CreateGEP(
 					zend_jit_load_str_val(llvm_ctx, container),
+					index),
+				1),
+			llvm_ctx.builder.CreateBitCast(
+				zend_jit_load_str_val(llvm_ctx, str),
+				PointerType::getUnqual(Type::getInt8Ty(llvm_ctx.context))),
+			1);
+
+		llvm_ctx.builder.CreateAlignedStore(
+			llvm_ctx.builder.getInt8(0),
+			LLVM_CREATE_CONST_GEP1(
+				llvm_ctx.builder.CreateBitCast(
+					zend_jit_load_str_val(llvm_ctx, str),
+					PointerType::getUnqual(Type::getInt8Ty(llvm_ctx.context))),
+				1), 4);
+
+		PHI_ADD(one_char, str);
+		llvm_ctx.builder.CreateBr(bb_do_ret);
+
+		llvm_ctx.builder.SetInsertPoint(bb_do_ret);
+
+		PHI_SET(one_char, str, PointerType::getUnqual(llvm_ctx.zend_string_type));
+#endif
+		str = zend_jit_string_alloc(llvm_ctx, LLVM_GET_LONG(1));
+
+		llvm_ctx.builder.CreateAlignedStore(
+			llvm_ctx.builder.CreateAlignedLoad(
+				llvm_ctx.builder.CreateGEP(
+					zend_jit_load_str_val(llvm_ctx,
+						zend_jit_load_str(llvm_ctx, container)),
 					index),
 				1),
 			llvm_ctx.builder.CreateBitCast(
@@ -11170,6 +11230,16 @@ static int zend_jit_codegen_start_module(zend_jit_context *ctx, zend_op_array *o
 			0,
 			ZEND_JIT_SYM("CG_emptry_string"));
 	llvm_ctx.engine->addGlobalMapping(llvm_ctx._CG_empty_string, (void*)CG(empty_string));
+
+	// Create LLVM reference to CG(one_char_string)
+	llvm_ctx._CG_one_char_string = new GlobalVariable(
+			*llvm_ctx.module,
+			PointerType::getUnqual(llvm_ctx.zend_string_type),
+			false,
+			GlobalVariable::ExternalLinkage,
+			0,
+			ZEND_JIT_SYM("CG_one_char_string"));
+	llvm_ctx.engine->addGlobalMapping(llvm_ctx._CG_one_char_string, (void*)CG(one_char_string));
 
 	// Create LLVM reference to CG(arena)
 	llvm_ctx._CG_arena = new GlobalVariable(
