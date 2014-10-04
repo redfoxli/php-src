@@ -9,6 +9,7 @@
    | prohibited.                                                          |
    +----------------------------------------------------------------------+
    | Authors: Dmitry Stogov <dmitry@zend.com>                             |
+   |          Xinchen Hui <laruence@php.net>                              |
    +----------------------------------------------------------------------+
 */
 
@@ -50,6 +51,9 @@ ZEND_FASTCALL int zend_jit_helper_handle_numeric_str(zend_string *str, zend_ulon
 ZEND_FASTCALL void zend_jit_helper_check_type_hint(zend_function *zf, uint32_t arg_num, zval *arg, zend_ulong fetch_type);
 ZEND_FASTCALL zend_ulong zend_jit_helper_slow_str_index(zval *dim, uint32_t type);
 ZEND_FASTCALL zend_ulong zend_jit_helper_dval_to_lval(double dval);
+ZEND_FASTCALL void zend_jit_helper_slow_fetch_address_obj(zval *container, zval *retval, zval *result, int is_ref);
+ZEND_FASTCALL void zend_jit_helper_new_ref(zval *ref, zval* val);
+ZEND_FASTCALL void zend_jit_helper_new_array(zval *zv);
 
 #ifdef __cplusplus
 }

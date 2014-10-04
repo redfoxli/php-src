@@ -13,6 +13,7 @@
    | license@php.net so we can mail you a copy immediately.               |
    +----------------------------------------------------------------------+
    | Authors: Dmitry Stogov <dmitry@zend.com>                             |
+   |          Xinchen Hui <laruence@php.net>                              |
    +----------------------------------------------------------------------+
 */
 
@@ -136,6 +137,56 @@ ZEND_FASTCALL void zend_jit_helper_check_type_hint(zend_function *zf, uint32_t a
 #endif
 		}
 	}
+}
+
+ZEND_FASTCALL void zend_jit_helper_slow_fetch_address_obj(zval *container, zval *retval, zval *result, int is_ref) {
+	if (UNEXPECTED(retval == &EG(uninitialized_zval))) {
+		zend_class_entry *ce = Z_OBJCE_P(container);
+
+		ZVAL_NULL(result);
+		zend_error(E_NOTICE, "Indirect modification of overloaded element of %s has no effect", ce->name->val);
+	} else if (EXPECTED(retval && Z_TYPE_P(retval) != IS_UNDEF)) {
+		if (!Z_ISREF_P(retval)) {
+			if (Z_REFCOUNTED_P(retval) &&
+					Z_REFCOUNT_P(retval) > 1) {
+				if (Z_TYPE_P(retval) != IS_OBJECT) {
+					Z_DELREF_P(retval);
+					ZVAL_DUP(result, retval);
+				} else {
+					ZVAL_COPY(result, retval);
+				}
+			}
+			if (Z_TYPE_P(retval) != IS_OBJECT) {
+				zend_class_entry *ce = Z_OBJCE_P(container);
+				zend_error(E_NOTICE, "Indirect modification of overloaded element of %s has no effect", ce->name->val);
+			}
+		}
+		if (result != retval) {
+			if (is_ref) {
+				ZVAL_MAKE_REF(retval);
+			}
+			ZVAL_INDIRECT(result, retval);
+		}
+	} else {
+		ZVAL_INDIRECT(result, &EG(error_zval));
+	}
+}
+
+ZEND_FASTCALL void zend_jit_helper_new_ref(zval *ref, zval* val) {
+	zend_reference *_ref = emalloc(sizeof(zend_reference));
+	GC_REFCOUNT(_ref) = 1;
+	GC_TYPE_INFO(_ref) = IS_REFERENCE;
+	ZVAL_COPY_VALUE(&_ref->val, val);
+	Z_REF_P(ref) = _ref;
+	Z_TYPE_INFO_P(ref) = IS_REFERENCE_EX;
+}
+
+ZEND_FASTCALL void zend_jit_helper_new_array(zval *zv) {
+	zend_array *_arr = emalloc(sizeof(zend_array));
+	GC_REFCOUNT(_arr) = 1;
+	GC_TYPE_INFO(_arr) = IS_ARRAY;
+	Z_ARR_P(zv) = _arr;	
+	Z_TYPE_INFO_P(zv) = IS_ARRAY_EX;
 }
 
 /*
