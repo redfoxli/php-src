@@ -53,7 +53,7 @@ ZEND_FASTCALL zend_ulong zend_jit_helper_slow_str_index(zval *dim, uint32_t type
 ZEND_FASTCALL zend_ulong zend_jit_helper_dval_to_lval(double dval);
 ZEND_FASTCALL void zend_jit_helper_slow_fetch_address_obj(zval *container, zval *retval, zval *result, int is_ref);
 ZEND_FASTCALL void zend_jit_helper_new_ref(zval *ref, zval* val);
-ZEND_FASTCALL void zend_jit_helper_new_array(zval *zv);
+ZEND_FASTCALL void zend_jit_helper_init_array(zval *zv, uint32_t size);
 
 #ifdef __cplusplus
 }

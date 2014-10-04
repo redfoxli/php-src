@@ -181,12 +181,13 @@ ZEND_FASTCALL void zend_jit_helper_new_ref(zval *ref, zval* val) {
 	Z_TYPE_INFO_P(ref) = IS_REFERENCE_EX;
 }
 
-ZEND_FASTCALL void zend_jit_helper_new_array(zval *zv) {
+ZEND_FASTCALL void zend_jit_helper_init_array(zval *zv, uint32_t size) {
 	zend_array *_arr = emalloc(sizeof(zend_array));
 	GC_REFCOUNT(_arr) = 1;
 	GC_TYPE_INFO(_arr) = IS_ARRAY;
 	Z_ARR_P(zv) = _arr;	
 	Z_TYPE_INFO_P(zv) = IS_ARRAY_EX;
+	zend_hash_init(Z_ARRVAL_P(zv), size, NULL, ZVAL_PTR_DTOR, 0);
 }
 
 /*

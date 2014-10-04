@@ -1844,23 +1844,24 @@ static void zend_jit_new_ref(zend_llvm_ctx &llvm_ctx,
 }
 /* }}} */
 
-/* {{{ static void zend_jit_new_array */
-static void zend_jit_new_array(zend_llvm_ctx &llvm_ctx,
-                               Value         *zval_addr)
+/* {{{ static void zend_jit_init_array */
+static void zend_jit_init_array(zend_llvm_ctx &llvm_ctx,
+                                Value         *zval_addr,
+                                uint32_t       size)
 {
 	Function *_helper = zend_jit_get_helper(
 			llvm_ctx,
-			(void*)zend_jit_helper_new_array,
-			ZEND_JIT_SYM("zend_jit_helper_new_array"),
+			(void*)zend_jit_helper_init_array,
+			ZEND_JIT_SYM("zend_jit_helper_init_array"),
 			ZEND_JIT_HELPER_FAST_CALL,
 			Type::getVoidTy(llvm_ctx.context),
 			llvm_ctx.zval_ptr_type,
-			NULL,
+			Type::getInt32Ty(llvm_ctx.context),
 			NULL,
 			NULL,
 			NULL);
 
-	CallInst *call = llvm_ctx.builder.CreateCall(_helper, zval_addr);
+	CallInst *call = llvm_ctx.builder.CreateCall2(_helper, zval_addr, llvm_ctx.builder.getInt32(size));
 	call->setCallingConv(CallingConv::X86_FastCall);
 }
 /* }}} */
@@ -3538,6 +3539,7 @@ static int zend_jit_make_ref(zend_llvm_ctx &llvm_ctx,
 	zend_jit_new_ref(llvm_ctx, zval_addr, zval_addr);
 
 	if (bb_finish) {
+		llvm_ctx.builder.CreateBr(bb_finish);
 		llvm_ctx.builder.SetInsertPoint(bb_finish);
 	}
 	return 1;
@@ -5642,7 +5644,7 @@ static void zend_jit_fetch_dimension_address(zend_llvm_ctx     &llvm_ctx,
 
 		//TODO avoid?
 		//zend_jit_zval_dtor_func(llvm_ctx, container, opline->lineno);
-		zend_jit_new_array(llvm_ctx, container);
+		zend_jit_init_array(llvm_ctx, container, 8);
 
 		if (dim_op_type == IS_UNUSED) {
 			Value *rv = zend_jit_hash_next_index_insert(
@@ -9176,7 +9178,7 @@ static int zend_jit_fetch_dim(zend_llvm_ctx     &llvm_ctx,
 	}
 
 	var_ptr = zend_jit_load_operand_addr(llvm_ctx,
-			        opline->op1_type, opline->op1, OP1_SSA_VAR(), OP1_INFO(), BP_VAR_RW, opline);
+			        opline->op1_type, opline->op1, OP1_SSA_VAR(), OP1_INFO(), fetch_type, opline);
 
 	if (opline->op2_type != IS_UNUSED) {
 		dim_ptr = zend_jit_load_operand(llvm_ctx, opline->op2_type, opline->op2, OP2_SSA_VAR(), OP2_INFO(), 0, opline);
@@ -9202,7 +9204,7 @@ static int zend_jit_fetch_dim(zend_llvm_ctx     &llvm_ctx,
 			fetch_type,
 			NULL,
 			NULL,
-			0,
+			opline->extended_value == 0? 0 : 1,
 			0,
 			opline, 
 			&may_threw);
