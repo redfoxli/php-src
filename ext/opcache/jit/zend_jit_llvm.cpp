@@ -5414,8 +5414,8 @@ static void zend_jit_fetch_dimension_address(zend_llvm_ctx     &llvm_ctx,
 					E_ERROR,
 					"%s",
 					LLVM_GET_CONST_STRING("[] operator not supported for strings"));
-		} else if (allow_str_offset) {
-			*offset = zend_jit_str_offset_index(
+		} else {
+			Value *index = zend_jit_str_offset_index(
 					llvm_ctx,
 					dim,
 					dim_ssa,
@@ -5424,16 +5424,19 @@ static void zend_jit_fetch_dimension_address(zend_llvm_ctx     &llvm_ctx,
 					dim_op,
 					fetch_type,
 					opline);
-			if (!*bb_str_offset) {
-				*bb_str_offset = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+			if (allow_str_offset) {
+				*offset = index;
+				if (!*bb_str_offset) {
+					*bb_str_offset = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+				}
+				llvm_ctx.builder.CreateBr(*bb_str_offset);
+			} else {
+				if (!bb_collect) {
+					bb_collect = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+				}
+				PHI_ADD(ind, llvm_ctx.builder.CreateIntToPtr(LLVM_GET_LONG(0), llvm_ctx.zval_ptr_type));
+				llvm_ctx.builder.CreateBr(bb_collect);
 			}
-			llvm_ctx.builder.CreateBr(*bb_str_offset);
-		} else {
-			if (!bb_collect) {
-				bb_collect = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
-			}
-			PHI_ADD(ind, llvm_ctx.builder.CreateIntToPtr(LLVM_GET_LONG(0), llvm_ctx.zval_ptr_type));
-			llvm_ctx.builder.CreateBr(bb_collect);
 		}
 	}
 
