@@ -4702,7 +4702,7 @@ numeric_dim:
 
 		PHI_SET(offset, str, PointerType::getUnqual(llvm_ctx.zend_string_type));
 
-		if (!(array_info & MAY_BE_ARRAY_KEY_LONG)) {
+		if ((array_info & MAY_BE_ARRAY_KEY_ANY) || !(array_info & MAY_BE_ARRAY_KEY_LONG)) {
 			BasicBlock *bb_found = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 			BasicBlock *bb_not_found = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 			BasicBlock *bb_indirect = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
@@ -4782,7 +4782,7 @@ numeric_dim:
 
 		PHI_SET(index, num_idx, LLVM_GET_LONG_TY(llvm_ctx.context));
 
-		if (!(array_info & MAY_BE_ARRAY_KEY_STRING)) {
+		if ((array_info & MAY_BE_ARRAY_KEY_ANY) || !(array_info & MAY_BE_ARRAY_KEY_STRING)) {
 			BasicBlock *bb_found = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 			BasicBlock *bb_not_found = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 			Value *zv = zend_jit_hash_index_find(llvm_ctx, ht, num_idx);
