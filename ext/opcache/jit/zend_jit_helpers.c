@@ -190,6 +190,20 @@ ZEND_FASTCALL void zend_jit_helper_init_array(zval *zv, uint32_t size) {
 	zend_hash_init(Z_ARRVAL_P(zv), size, NULL, ZVAL_PTR_DTOR, 0);
 }
 
+ZEND_FASTCALL int zend_jit_helper_slow_strlen_obj(zval *obj, size_t *len) {
+	zend_string *str;
+	zval tmp;
+
+	ZVAL_COPY(&tmp, obj);
+	if (parse_arg_object_to_str(&tmp, &str, IS_STRING TSRMLS_CC) == FAILURE) {
+		zend_error(E_WARNING, "strlen() expects parameter 1 to be string, %s given", zend_get_type_by_const(Z_TYPE_P(obj)));
+		return 0;
+	}
+	*len = str->len;
+	zval_dtor(&tmp);
+	return 1;
+}
+
 /*
  * Local variables:
  * tab-width: 4
