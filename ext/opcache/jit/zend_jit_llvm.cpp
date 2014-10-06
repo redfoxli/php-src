@@ -282,7 +282,6 @@ typedef struct _zend_llvm_ctx {
 	GlobalVariable  *_EG_error_zval;
 	GlobalVariable  *_EG_current_execute_data;
 	GlobalVariable  *_EG_function_table;
-	GlobalVariable  *_EG_This;
 	GlobalVariable  *_EG_scope;
 	GlobalVariable  *_EG_symtable_cache_ptr;
 	GlobalVariable  *_EG_symtable_cache_limit;
@@ -352,7 +351,6 @@ typedef struct _zend_llvm_ctx {
 		_EG_error_zval = NULL;
 		_EG_current_execute_data = NULL;
 		_EG_function_table = NULL;
-		_EG_This = NULL;
 		_EG_scope = NULL;
 		_EG_symtable_cache_ptr = NULL;
 		_EG_symtable_cache_limit = NULL;
@@ -3387,7 +3385,11 @@ static Value* zend_jit_load_operand(zend_llvm_ctx &llvm_ctx,
 	} else if (op_type == IS_CV) {
 		return zend_jit_load_cv(llvm_ctx, op.var, info, ssa_var, check, opline, mode);
 	} else if (op_type == IS_UNUSED && fetch_obj) {
-		Value *this_ptr = llvm_ctx._EG_This;
+		Value *this_ptr =  zend_jit_GEP(
+			llvm_ctx,
+			llvm_ctx._execute_data,
+			offsetof(zend_execute_data, This),
+			llvm_ctx.zval_ptr_type);
 		if (zend_jit_needs_check_for_this(llvm_ctx, opline)) {
 			BasicBlock *bb_fatal = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 			BasicBlock *bb_follow = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
@@ -9179,9 +9181,8 @@ static int zend_jit_fetch_dim_r(zend_llvm_ctx     &llvm_ctx,
 		return 0;
 	}
 
-	if (opline->op1_type != IS_VAR
-			|| !(opline->extended_value & ZEND_FETCH_ADD_LOCK)) {
-		if (!zend_jit_free_operand(llvm_ctx, opline->op1_type, var_ptr, NULL, OP1_INFO(), opline->lineno)) return 0;
+	if (!zend_jit_free_operand(llvm_ctx, opline->op1_type, var_ptr, NULL, OP1_INFO(), opline->lineno)) {
+		return 0;
 	}
 
 	if (may_threw) {
@@ -9874,20 +9875,27 @@ static Value* zend_jit_vm_stack_push_call_frame(zend_llvm_ctx    &llvm_ctx,
 			PointerType::getUnqual(Type::getInt8Ty(llvm_ctx.context))), 4);
 	//JIT: call->called_scope = called_scope;
 	llvm_ctx.builder.CreateAlignedStore(
-		LLVM_GET_LONG(0),
+		LLVM_GET_LONG(0), //???
 		zend_jit_GEP(
 			llvm_ctx,
 			call,
 			offsetof(zend_execute_data, called_scope),
 			PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))), 4);
-	//JIT: call->object = object;
+	//JIT: ZVAL_OBJ(&call->This) = object;
 	llvm_ctx.builder.CreateAlignedStore(
-		LLVM_GET_LONG(0),
+		LLVM_GET_LONG(0), //???
 		zend_jit_GEP(
 			llvm_ctx,
 			call,
-			offsetof(zend_execute_data, object),
+			offsetof(zend_execute_data, This.value.obj),
 			PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))), 4);
+	llvm_ctx.builder.CreateAlignedStore(
+		llvm_ctx.builder.getInt32(IS_OBJECT_EX),
+		zend_jit_GEP(
+			llvm_ctx,
+			call,
+			offsetof(zend_execute_data, This.u1.type_info),
+			PointerType::getUnqual(Type::getInt32Ty(llvm_ctx.context))), 4);
 	//JIT: call->prev_execute_data = prev;
 	llvm_ctx.builder.CreateAlignedStore(
 		llvm_ctx.builder.CreateAlignedLoad(
@@ -10328,6 +10336,7 @@ static Value* zend_jit_arena_calloc(zend_llvm_ctx    &llvm_ctx,
 /* {{{ static int zend_jit_init_func_execute_data */
 static int zend_jit_init_func_execute_data(zend_llvm_ctx    &llvm_ctx,
                                            Value            *execute_data,
+                                           Value            *object,
                                            zend_function    *func,
                                            Value            *func_addr,
                                            Value            *return_value,
@@ -10868,12 +10877,6 @@ static int zend_jit_init_func_execute_data(zend_llvm_ctx    &llvm_ctx,
 			this_var = llvm_ctx.builder.getInt32(func->op_array.this_var);
 		}
 		//JIT: if (EX(object)) {
-		Value *object = llvm_ctx.builder.CreateAlignedLoad(
-					zend_jit_GEP(
-						llvm_ctx,
-						execute_data,
-						offsetof(zend_execute_data, object),
-						PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_object_type))), 4);
 		bb_follow = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 		zend_jit_expected_br(llvm_ctx,
 			llvm_ctx.builder.CreateIsNotNull(object),
@@ -11196,6 +11199,13 @@ static int zend_jit_do_fcall(zend_llvm_ctx    &llvm_ctx,
 				llvm_ctx._execute_data,
 				offsetof(zend_execute_data, call),
 				PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_execute_data_type))), 4);
+	//JIT: zend_object *object = Z_OBJ(call->This);
+	Value *object = llvm_ctx.builder.CreateAlignedLoad(
+			zend_jit_GEP(
+				llvm_ctx,
+				call,
+				offsetof(zend_execute_data, This.value.obj),
+				PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_object_type))), 4);
 
 	if (func && func->type == ZEND_INTERNAL_FUNCTION) {
 		func_addr = llvm_ctx.builder.CreateIntToPtr(
@@ -11247,23 +11257,6 @@ static int zend_jit_do_fcall(zend_llvm_ctx    &llvm_ctx,
 				LLVM_GET_CONST_STRING(func->common.function_name->val));
 			zend_jit_check_exception(llvm_ctx, opline);
 		}
-		if (func->common.scope &&
-			!(func->common.fn_flags & ZEND_ACC_STATIC) /*???&&
-			!call->object*/) {
-
-			if (func->common.fn_flags & ZEND_ACC_ALLOW_STATIC) {
-				zend_jit_error(llvm_ctx, opline, E_STRICT,
-					"Non-static method %s::%s() should not be called statically",
-					LLVM_GET_CONST_STRING(func->common.scope->name->val),
-					LLVM_GET_CONST_STRING(func->common.function_name->val));
-				zend_jit_check_exception(llvm_ctx, opline);
-			} else {
-				zend_jit_error_noreturn(llvm_ctx, opline, E_ERROR,
-					"Non-static method %s::%s() cannot be called statically",
-					LLVM_GET_CONST_STRING(func->common.scope->name->val),
-					LLVM_GET_CONST_STRING(func->common.function_name->val));
-			}
-		}
 	} else {
 		//JIT: if (UNEXPECTED((fbc->common.fn_flags & (ZEND_ACC_ABSTRACT|ZEND_ACC_DEPRECATED)) != 0)) {
 		
@@ -11276,16 +11269,6 @@ static int zend_jit_do_fcall(zend_llvm_ctx    &llvm_ctx,
 		//       fbc->common.scope ? "::" : "",
 		//       fbc->common.function_name->val);
 		//JIT: if (UNEXPECTED(EG(exception) != NULL)) HANDLE_EXCEPTION();
-		
-		//JIT: if (fbc->common.scope &&
-		//       !(fbc->common.fn_flags & ZEND_ACC_STATIC) &&
-		//       !call->object) {
-
-		//JIT: if (fbc->common.fn_flags & ZEND_ACC_ALLOW_STATIC) {
-		//JIT: zend_error(E_STRICT, "Non-static method %s::%s() should not be called statically", fbc->common.scope->name->val, fbc->common.function_name->val);
-		//JIT: if (UNEXPECTED(EG(exception) != NULL)) HANDLE_EXCEPTION();
-
-		//JIT: zend_error_noreturn(E_ERROR, "Non-static method %s::%s() cannot be called statically", fbc->common.scope->name->val, fbc->common.function_name->val);
 		
 		//???... error messages
 	}
@@ -11335,21 +11318,7 @@ static int zend_jit_do_fcall(zend_llvm_ctx    &llvm_ctx,
 						bb_func);
 					llvm_ctx.builder.SetInsertPoint(bb_method);
 				}
-				Value *object = llvm_ctx.builder.CreateAlignedLoad(
-						zend_jit_GEP(
-							llvm_ctx,
-							llvm_ctx._execute_data,
-							offsetof(zend_execute_data, called_scope),
-							PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_object_type))), 4);
-				//JIT: Z_OBJ(EG(This)) = call->object;
-				llvm_ctx.builder.CreateAlignedStore(
-					object,
-					zend_jit_GEP(
-						llvm_ctx,
-						llvm_ctx._EG_This,
-						offsetof(zval, value.obj),
-						PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_object_type))), 4);
-				//JIT: EG(scope) = (call->object) ? NULL : func->common.scope;
+				//JIT: EG(scope) = object ? NULL : func->common.scope;
 				if (!bb_common) {
 					bb_common = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 				}
@@ -11403,6 +11372,19 @@ static int zend_jit_do_fcall(zend_llvm_ctx    &llvm_ctx,
 						call,
 						offsetof(zend_execute_data, called_scope),
 						PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_class_entry_type))), 4);
+				//JIT: Z_OBJ(call->This) = Z_OBJ(EX(This));
+				llvm_ctx.builder.CreateAlignedStore(
+					llvm_ctx.builder.CreateAlignedLoad(
+						zend_jit_GEP(
+							llvm_ctx,
+							llvm_ctx._execute_data,
+							offsetof(zend_execute_data, This.value.obj),
+							PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_object_type))), 4),
+					zend_jit_GEP(
+						llvm_ctx,
+						call,
+						offsetof(zend_execute_data, This.value.obj),
+						PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_object_type))), 4);
 				if (bb_common) {
 					llvm_ctx.builder.CreateBr(bb_common);
 				}
@@ -11500,7 +11482,7 @@ static int zend_jit_do_fcall(zend_llvm_ctx    &llvm_ctx,
 		//JIT: Z_VAR_FLAGS_P(ret) = (fbc->common.fn_flags & ZEND_ACC_RETURN_REFERENCE) != 0 ? IS_VAR_RET_REF : 0;
 		zend_jit_set_retref_flag(llvm_ctx, ret, func, func_addr);
 
-		//JIT: fbc->internal_function.handler(call->num_args, ret TSRMLS_CC);
+		//JIT: fbc->internal_function.handler(call, ret TSRMLS_CC);
 		if (func) {
 			Function *_helper = zend_jit_get_helper(
 				llvm_ctx,
@@ -11508,18 +11490,9 @@ static int zend_jit_do_fcall(zend_llvm_ctx    &llvm_ctx,
 				ZEND_JIT_SYM(Twine("PHP__") + func->internal_function.function_name->val),
 				0,
 				Type::getVoidTy(llvm_ctx.context),
-				Type::getInt32Ty(llvm_ctx.context),
+				PointerType::getUnqual(llvm_ctx.zend_execute_data_type),
 				llvm_ctx.zval_ptr_type);
-			llvm_ctx.builder.CreateCall2(_helper,
-				((num_args != -1) ?
-					(Value*)llvm_ctx.builder.getInt32(num_args) :
-					(Value*)llvm_ctx.builder.CreateAlignedLoad(					
-						zend_jit_GEP(
-							llvm_ctx,
-							call,
-							offsetof(zend_execute_data, num_args),
-							PointerType::getUnqual(Type::getInt32Ty(llvm_ctx.context))), 4)),
-				ret);
+			llvm_ctx.builder.CreateCall2(_helper, call, ret);
 		} else {
 //???..check
 			Value *handler =
@@ -11531,16 +11504,7 @@ static int zend_jit_do_fcall(zend_llvm_ctx    &llvm_ctx,
 							offsetof(zend_function, internal_function.handler),
 							PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))), 4),
 					PointerType::getUnqual(llvm_ctx.internal_func_type));
-			llvm_ctx.builder.CreateCall2(handler,
-				((num_args != -1) ?
-					(Value*)llvm_ctx.builder.getInt32(num_args) :
-					(Value*)llvm_ctx.builder.CreateAlignedLoad(					
-						zend_jit_GEP(
-							llvm_ctx,
-							call,
-							offsetof(zend_execute_data, num_args),
-							PointerType::getUnqual(Type::getInt32Ty(llvm_ctx.context))), 4)),
-				ret);
+			llvm_ctx.builder.CreateCall2(handler, call, ret);
 		}
 
 		//JIT: EG(current_execute_data) = call->prev_execute_data;		
@@ -11622,21 +11586,6 @@ static int zend_jit_do_fcall(zend_llvm_ctx    &llvm_ctx,
 			llvm_ctx.builder.SetInsertPoint(bb_user);
 		}
 
-		//JIT: Z_OBJ(EG(This)) = call->object;
-		Value *object = llvm_ctx.builder.CreateAlignedLoad(
-				zend_jit_GEP(
-					llvm_ctx,
-					call,
-					offsetof(zend_execute_data, object),
-					PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_object_type))), 4);
-		//JIT: Z_OBJ(EG(This)) = call->object;
-		llvm_ctx.builder.CreateAlignedStore(
-			object,
-			zend_jit_GEP(
-				llvm_ctx,
-				llvm_ctx._EG_This,
-				offsetof(zval, value.obj),
-				PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_object_type))), 4);
 		//JIT: EG(scope) = fbc->common.scope;
 		if (func) {
 			llvm_ctx.builder.CreateAlignedStore(
@@ -11744,7 +11693,7 @@ static int zend_jit_do_fcall(zend_llvm_ctx    &llvm_ctx,
 					offsetof(zend_execute_data, prev_execute_data),
 					PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_execute_data_type))), 4);
 			//JIT: i_init_func_execute_data(call, &fbc->op_array, return_value, VM_FRAME_TOP_FUNCTION TSRMLS_CC);
-			zend_jit_init_func_execute_data(llvm_ctx, call, func, func_addr, return_value, VM_FRAME_TOP_FUNCTION, num_args, opline->lineno);
+			zend_jit_init_func_execute_data(llvm_ctx, call, object, func, func_addr, return_value, VM_FRAME_TOP_FUNCTION, num_args, opline->lineno);
 
 			//JIT: zend_execute_ex(call TSRMLS_CC);
 			Function *_helper = zend_jit_get_helper(
@@ -11781,14 +11730,7 @@ static int zend_jit_do_fcall(zend_llvm_ctx    &llvm_ctx,
 	if (bb_fcall_end_scope) {
 		llvm_ctx.builder.SetInsertPoint(bb_fcall_end_scope);
 //???..check
-		//JIT: if (Z_OBJ(EG(This))) {
-		Value *object =		
-			llvm_ctx.builder.CreateAlignedLoad(
-				zend_jit_GEP(
-				    llvm_ctx,
-					llvm_ctx._EG_This,
-					offsetof(zval, value.obj),
-					PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_object_type))), 4);
+		//JIT: if (object) {
 		BasicBlock *bb_follow = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 		BasicBlock *bb_end = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 		zend_jit_unexpected_br(llvm_ctx,
@@ -11810,10 +11752,10 @@ static int zend_jit_do_fcall(zend_llvm_ctx    &llvm_ctx,
 			llvm_ctx.builder.SetInsertPoint(bb_exception);
 
 			if (!(opline->op1.num & ZEND_CALL_CTOR_RESULT_UNUSED)) {
-				//JIT: Z_DELREF(EG(This));
+				//JIT: GC_REFCOUNT(object)--;
 				zend_jit_delref(llvm_ctx, object);
 			}
-			//JIT: if (Z_REFCOUNT(EG(This)) == 1) {
+			//JIT: if (GC_REFCOUNT(object) == 1) {
 			zend_jit_unexpected_br(llvm_ctx,				
 				llvm_ctx.builder.CreateICmpEQ(
 					llvm_ctx.builder.CreateAlignedLoad(
@@ -11822,29 +11764,16 @@ static int zend_jit_do_fcall(zend_llvm_ctx    &llvm_ctx,
 				bb_ctor_failed,
 				bb_skip);
 			llvm_ctx.builder.SetInsertPoint(bb_ctor_failed);
-			//JIT: zend_object_store_ctor_failed(Z_OBJ(EG(This)) TSRMLS_CC);
+			//JIT: zend_object_store_ctor_failed(object TSRMLS_CC);
 			zend_jit_object_store_ctor_failed(llvm_ctx, object);
 			llvm_ctx.builder.CreateBr(bb_skip);
 			llvm_ctx.builder.SetInsertPoint(bb_skip);
 		}
-		//JIT: OBJ_RELEASE(Z_OBJ(EG(This)));
+		//JIT: OBJ_RELEASE(object);
 		zend_jit_object_release(llvm_ctx, object, opline->lineno);
 		llvm_ctx.builder.CreateBr(bb_end);
 		llvm_ctx.builder.SetInsertPoint(bb_end);
 
-		//JIT: Z_OBJ(EG(This)) = EX(object);
-		llvm_ctx.builder.CreateAlignedStore(
-			llvm_ctx.builder.CreateAlignedLoad(
-				zend_jit_GEP(
-					llvm_ctx,
-					llvm_ctx._execute_data,
-					offsetof(zend_execute_data, object),
-					PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_object_type))), 4),
-			zend_jit_GEP(
-				llvm_ctx,
-				llvm_ctx._EG_This,
-				offsetof(zval, value.obj),
-				PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_object_type))), 4);
 		//JIT: EG(scope) = EX(scope);
 		llvm_ctx.builder.CreateAlignedStore(
 			llvm_ctx.builder.CreateAlignedLoad(
@@ -12501,7 +12430,7 @@ static int zend_jit_codegen_start_module(zend_jit_context *ctx, zend_op_array *o
 		false);
 
 	std::vector<llvm::Type *> internal_func_args;
-	internal_func_args.push_back(Type::getInt32Ty(llvm_ctx.context));
+	internal_func_args.push_back(PointerType::getUnqual(llvm_ctx.zend_execute_data_type));
 	internal_func_args.push_back(llvm_ctx.zval_ptr_type);
 	llvm_ctx.internal_func_type = FunctionType::get(
 		Type::getVoidTy(llvm_ctx.context),
@@ -12630,16 +12559,6 @@ static int zend_jit_codegen_start_module(zend_jit_context *ctx, zend_op_array *o
 			0,
 			ZEND_JIT_SYM("EG_function_table"));
 	llvm_ctx.engine->addGlobalMapping(llvm_ctx._EG_function_table, (void*)&EG(function_table));
-
-	// Create LLVM reference to EG(This)
-	llvm_ctx._EG_This = new GlobalVariable(
-			*llvm_ctx.module,
-			llvm_ctx.zval_type,
-			false,
-			GlobalVariable::ExternalLinkage,
-			0,
-			ZEND_JIT_SYM("EG_This"));
-	llvm_ctx.engine->addGlobalMapping(llvm_ctx._EG_This, (void*)&EG(This));
 
 	// Create LLVM reference to EG(scope)
 	llvm_ctx._EG_scope = new GlobalVariable(
