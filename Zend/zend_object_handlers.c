@@ -815,10 +815,6 @@ static zval *zend_std_get_property_ptr_ptr(zval *object, zval *member, int type,
 		(guard = zend_get_property_guard(zobj, property_info, member)) == NULL ||
 		(property_info && ((*guard) & IN_GET))) {
 
-		/* we don't have access controls - will just add it */
-		if(UNEXPECTED(type == BP_VAR_RW || type == BP_VAR_R)) {
-			zend_error(E_NOTICE, "Undefined property: %s::$%s", zobj->ce->name->val, Z_STRVAL_P(member));
-		}
 		ZVAL_NULL(&tmp);
 		if (EXPECTED((property_info->flags & ZEND_ACC_STATIC) == 0) &&
 		    property_info->offset >= 0) {
@@ -829,6 +825,12 @@ static zval *zend_std_get_property_ptr_ptr(zval *object, zval *member, int type,
 				rebuild_object_properties(zobj);
 			}
 			retval = zend_hash_update(zobj->properties, property_info->name, &tmp);
+		}
+
+		/* Notice is thrown after creation of the property, to avoid EG(std_property_info)
+		 * being overwritten in an error handler. */
+		if (UNEXPECTED(type == BP_VAR_RW || type == BP_VAR_R)) {
+			zend_error(E_NOTICE, "Undefined property: %s::$%s", zobj->ce->name->val, Z_STRVAL_P(member));
 		}
 	} else {
 		/* we do have getter - fail and let it try again with usual get/set */
@@ -921,7 +923,7 @@ static void zend_std_unset_dimension(zval *object, zval *offset TSRMLS_DC) /* {{
 
 ZEND_API void zend_std_call_user_call(INTERNAL_FUNCTION_PARAMETERS) /* {{{ */
 {
-	zend_internal_function *func = (zend_internal_function *)EG(current_execute_data)->func;
+	zend_internal_function *func = (zend_internal_function *)EX(func);
 	zval method_name, method_args;
 	zval method_result;
 	zend_class_entry *ce = Z_OBJCE_P(getThis());
@@ -1139,7 +1141,7 @@ static union _zend_function *zend_std_get_method(zend_object **obj_ptr, zend_str
 
 ZEND_API void zend_std_callstatic_user_call(INTERNAL_FUNCTION_PARAMETERS) /* {{{ */
 {
-	zend_internal_function *func = (zend_internal_function *)EG(current_execute_data)->func;
+	zend_internal_function *func = (zend_internal_function *)EX(func);
 	zval method_name, method_args;
 	zval method_result;
 	zend_class_entry *ce = EG(scope);
@@ -1231,9 +1233,9 @@ ZEND_API zend_function *zend_std_get_static_method(zend_class_entry *ce, zend_st
 				zend_string_free(lc_function_name);
 			}
 			if (ce->__call &&
-			    Z_OBJ(EG(This)) &&
-			    Z_OBJ_HT(EG(This))->get_class_entry &&
-			    instanceof_function(Z_OBJCE(EG(This)), ce TSRMLS_CC)) {
+			    Z_OBJ(EG(current_execute_data)->This) &&
+			    Z_OBJ_HT(EG(current_execute_data)->This)->get_class_entry &&
+			    instanceof_function(Z_OBJCE(EG(current_execute_data)->This), ce TSRMLS_CC)) {
 				return zend_get_user_call_function(ce, function_name);
 			} else if (ce->__callstatic) {
 				return zend_get_user_callstatic_function(ce, function_name);

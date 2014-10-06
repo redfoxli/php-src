@@ -1209,9 +1209,7 @@ ZEND_VM_HANDLER(81, ZEND_FETCH_DIM_R, CONST|TMP|VAR|CV, CONST|TMP|VAR|CV)
 	container = GET_OP1_ZVAL_PTR(BP_VAR_R);
 	zend_fetch_dimension_address_read_R(EX_VAR(opline->result.var), container, GET_OP2_ZVAL_PTR_DEREF(BP_VAR_R), OP2_TYPE TSRMLS_CC);
 	FREE_OP2();
-	if (OP1_TYPE != IS_VAR || !(opline->extended_value & ZEND_FETCH_ADD_LOCK)) {
-		FREE_OP1();
-	}
+	FREE_OP1();
 	CHECK_EXCEPTION();
 	ZEND_VM_NEXT_OPCODE();
 }
@@ -1506,23 +1504,34 @@ ZEND_VM_HANDLER(97, ZEND_FETCH_OBJ_UNSET, VAR|UNUSED|CV, CONST|TMP|VAR|CV)
 	ZEND_VM_NEXT_OPCODE();
 }
 
-ZEND_VM_HANDLER(98, ZEND_FETCH_DIM_TMP_VAR, CONST|TMP, CONST)
+ZEND_VM_HANDLER(98, ZEND_FETCH_LIST, CONST|TMP|VAR|CV, CONST)
 {
 	USE_OPLINE
 	zend_free_op free_op1;
 	zval *container;
 
 	SAVE_OPLINE();
-	container = GET_OP1_ZVAL_PTR(BP_VAR_R);
+	container = GET_OP1_ZVAL_PTR_DEREF(BP_VAR_R);
 
-	if (UNEXPECTED(Z_TYPE_P(container) != IS_ARRAY)) {
-		ZVAL_NULL(EX_VAR(opline->result.var));
-	} else {
+	if (EXPECTED(Z_TYPE_P(container) == IS_ARRAY)) {
 		zend_free_op free_op2;
 		zval *value = zend_fetch_dimension_address_inner(Z_ARRVAL_P(container), GET_OP2_ZVAL_PTR_DEREF(BP_VAR_R), OP2_TYPE, BP_VAR_R TSRMLS_CC);
 
 		ZVAL_COPY(EX_VAR(opline->result.var), value);
-		FREE_OP2();
+	} else if (UNEXPECTED(Z_TYPE_P(container) == IS_OBJECT) &&
+	           EXPECTED(Z_OBJ_HT_P(container)->read_dimension)) {
+		zval *result = EX_VAR(opline->result.var);
+		zval *retval = Z_OBJ_HT_P(container)->read_dimension(container, GET_OP2_ZVAL_PTR_DEREF(BP_VAR_R), BP_VAR_R, result TSRMLS_CC);
+
+		if (retval) {
+			if (result != retval) {
+				ZVAL_COPY(result, retval);
+			}
+		} else {
+			ZVAL_NULL(result);
+		}
+	} else {
+		ZVAL_NULL(EX_VAR(opline->result.var));
 	}
 	CHECK_EXCEPTION();
 	ZEND_VM_NEXT_OPCODE();
@@ -1711,6 +1720,8 @@ ZEND_VM_HELPER(zend_leave_helper, ANY, ANY)
 	vm_frame_kind frame_kind = EX(frame_kind);
 
 	if (frame_kind == VM_FRAME_NESTED_FUNCTION) {
+		zend_object *object;
+
 		i_free_compiled_variables(execute_data TSRMLS_CC);
 		if (UNEXPECTED(EX(symbol_table) != NULL)) {
 			zend_clean_and_cache_symbol_table(EX(symbol_table) TSRMLS_CC);
@@ -1720,26 +1731,22 @@ ZEND_VM_HELPER(zend_leave_helper, ANY, ANY)
 		if (UNEXPECTED((EX(func)->op_array.fn_flags & ZEND_ACC_CLOSURE) != 0) && EX(func)->op_array.prototype) {
 			OBJ_RELEASE((zend_object*)EX(func)->op_array.prototype);
 		}
+		object = Z_OBJ(EX(This));
 		zend_vm_stack_free_call_frame(execute_data TSRMLS_CC);
 
 		execute_data = EG(current_execute_data);
 
-		if (Z_OBJ(EG(This))) {
+		if (object) {
 			if (UNEXPECTED(EG(exception) != NULL) && (EX(opline)->op1.num & ZEND_CALL_CTOR)) {
 				if (!(EX(opline)->op1.num & ZEND_CALL_CTOR_RESULT_UNUSED)) {
-					Z_DELREF(EG(This));
+					GC_REFCOUNT(object)--;
 				}
-				if (Z_REFCOUNT(EG(This)) == 1) {
-					zend_object_store_ctor_failed(Z_OBJ(EG(This)) TSRMLS_CC);
+				if (GC_REFCOUNT(object) == 1) {
+					zend_object_store_ctor_failed(object TSRMLS_CC);
 				}
 			}
-			if (!Z_DELREF(EG(This))) {
-				_zval_dtor_func_for_ptr(Z_COUNTED(EG(This)) ZEND_FILE_LINE_CC);
-			} else if (UNEXPECTED(!Z_GC_INFO(EG(This)))) {
-				gc_possible_root(Z_COUNTED(EG(This)) TSRMLS_CC);
-			}
+			OBJ_RELEASE(object);
 		}
-		Z_OBJ(EG(This)) = EX(object);
 		EG(scope) = EX(scope);
 
 		if (UNEXPECTED(EG(exception) != NULL)) {
@@ -2132,11 +2139,48 @@ ZEND_VM_HANDLER(112, ZEND_INIT_METHOD_CALL, TMP|VAR|UNUSED|CV, CONST|TMP|VAR|CV)
 	object = GET_OP1_OBJ_ZVAL_PTR_DEREF(BP_VAR_R);
 
 	if (UNEXPECTED(Z_TYPE_P(object) != IS_OBJECT)) {
+		uint32_t nesting = 1;
+
 		if (UNEXPECTED(EG(exception) != NULL)) {
 			FREE_OP2();
 			HANDLE_EXCEPTION();
 		}
-		zend_error_noreturn(E_ERROR, "Call to a member function %s() on %s", Z_STRVAL_P(function_name), zend_get_type_by_const(Z_TYPE_P(object)));
+
+		zend_error(E_RECOVERABLE_ERROR, "Call to a member function %s() on %s",  Z_STRVAL_P(function_name), zend_get_type_by_const(Z_TYPE_P(object)));
+		FREE_OP2();
+		FREE_OP1_IF_VAR();
+
+		if (EG(exception) != NULL) {
+			HANDLE_EXCEPTION();
+		}
+
+		/* No exception raised: Skip over arguments until fcall opcode with correct
+		 * nesting level. Return NULL (except when return value unused) */
+		do {
+			opline++;
+			if (opline->opcode == ZEND_INIT_FCALL ||
+				opline->opcode == ZEND_INIT_FCALL_BY_NAME ||
+				opline->opcode == ZEND_INIT_NS_FCALL_BY_NAME ||
+				opline->opcode == ZEND_INIT_METHOD_CALL ||
+				opline->opcode == ZEND_INIT_STATIC_METHOD_CALL ||
+				opline->opcode == ZEND_INIT_USER_CALL ||
+				opline->opcode == ZEND_NEW
+			) {
+				nesting++;
+			} else if (opline->opcode == ZEND_DO_FCALL) {
+				nesting--;
+			}
+		} while (nesting);
+
+		if (RETURN_VALUE_USED(opline)) {
+			ZVAL_NULL(EX_VAR(opline->result.var));
+		}
+
+		/* We've skipped EXT_FCALL_BEGIND, so also skip the ending opcode */
+		if ((opline + 1)->opcode == ZEND_EXT_FCALL_END) {
+			opline++;
+		}
+		ZEND_VM_JMP(++opline);
 	}
 
 	obj = Z_OBJ_P(object);
@@ -2252,7 +2296,7 @@ ZEND_VM_HANDLER(113, ZEND_INIT_STATIC_METHOD_CALL, CONST|VAR, CONST|TMP|VAR|UNUS
 		if (UNEXPECTED(ce->constructor == NULL)) {
 			zend_error_noreturn(E_ERROR, "Cannot call constructor");
 		}
-		if (EX(object) && zend_get_class_entry(EX(object) TSRMLS_CC) != ce->constructor->common.scope && (ce->constructor->common.fn_flags & ZEND_ACC_PRIVATE)) {
+		if (Z_OBJ(EX(This)) && zend_get_class_entry(Z_OBJ(EX(This)) TSRMLS_CC) != ce->constructor->common.scope && (ce->constructor->common.fn_flags & ZEND_ACC_PRIVATE)) {
 			zend_error_noreturn(E_ERROR, "Cannot call private %s::__construct()", ce->name->val);
 		}
 		fbc = ce->constructor;
@@ -2260,19 +2304,28 @@ ZEND_VM_HANDLER(113, ZEND_INIT_STATIC_METHOD_CALL, CONST|VAR, CONST|TMP|VAR|UNUS
 
 	object = NULL;
 	if (!(fbc->common.fn_flags & ZEND_ACC_STATIC)) {
-		if (EX(object)) {
-			object = EX(object);
+		if (Z_OBJ(EX(This))) {
+			object = Z_OBJ(EX(This));
 			GC_REFCOUNT(object)++;
-			if (object->handlers->get_class_entry &&
-			    !instanceof_function(zend_get_class_entry(object TSRMLS_CC), ce TSRMLS_CC)) {
-			    /* We are calling method of the other (incompatible) class,
-			       but passing $this. This is done for compatibility with php-4. */
-				if (fbc->common.fn_flags & ZEND_ACC_ALLOW_STATIC) {
-					zend_error(E_DEPRECATED, "Non-static method %s::%s() should not be called statically, assuming $this from incompatible context", fbc->common.scope->name->val, fbc->common.function_name->val);
-				} else {
-					/* An internal function assumes $this is present and won't check that. So PHP would crash by allowing the call. */
-					zend_error_noreturn(E_ERROR, "Non-static method %s::%s() cannot be called statically, assuming $this from incompatible context", fbc->common.scope->name->val, fbc->common.function_name->val);
-				}
+		}
+		if (!object ||
+		    (object->handlers->get_class_entry &&
+		     !instanceof_function(zend_get_class_entry(object TSRMLS_CC), ce TSRMLS_CC))) {
+		    /* We are calling method of the other (incompatible) class,
+		       but passing $this. This is done for compatibility with php-4. */
+			if (fbc->common.fn_flags & ZEND_ACC_ALLOW_STATIC) {
+				zend_error(
+					object ? E_DEPRECATED : E_STRICT,
+					"Non-static method %s::%s() should not be called statically%s",
+					fbc->common.scope->name->val, fbc->common.function_name->val,
+					object ? ", assuming $this from incompatible context" : "");
+			} else {
+				/* An internal function assumes $this is present and won't check that. So PHP would crash by allowing the call. */
+				zend_error_noreturn(
+					E_ERROR,
+					"Non-static method %s::%s() cannot be called statically%s",
+					fbc->common.scope->name->val, fbc->common.function_name->val,
+					object ? ", assuming $this from incompatible context" : "");
 			}
 		}
 	}
@@ -2398,6 +2451,18 @@ ZEND_VM_HANDLER(59, ZEND_INIT_FCALL_BY_NAME, ANY, CONST|TMP|VAR|CV)
 				if (UNEXPECTED(fbc == NULL)) {
 					zend_error_noreturn(E_ERROR, "Call to undefined method %s::%s()", called_scope->name->val, Z_STRVAL_P(method));
 				}
+				if (!(fbc->common.fn_flags & ZEND_ACC_STATIC)) {
+					if (fbc->common.fn_flags & ZEND_ACC_ALLOW_STATIC) {
+						zend_error(E_STRICT,
+						"Non-static method %s::%s() should not be called statically",
+						fbc->common.scope->name->val, fbc->common.function_name->val);
+					} else {
+						zend_error_noreturn(
+							E_ERROR,
+							"Non-static method %s::%s() cannot be called statically",
+							fbc->common.scope->name->val, fbc->common.function_name->val);
+					}
+				}
 			} else {
 				called_scope = Z_OBJCE_P(obj);
 				object = Z_OBJ_P(obj);
@@ -2454,6 +2519,18 @@ ZEND_VM_HANDLER(118, ZEND_INIT_USER_CALL, CONST, CONST|TMP|VAR|CV)
 		object = fcc.object;
 		if (object) {
 			GC_REFCOUNT(object)++; /* For $this pointer */
+		} else if (func->common.scope &&
+		           !(func->common.fn_flags & ZEND_ACC_STATIC)) {
+			if (func->common.fn_flags & ZEND_ACC_ALLOW_STATIC) {
+				zend_error(E_STRICT,
+				"Non-static method %s::%s() should not be called statically",
+				func->common.scope->name->val, func->common.function_name->val);
+			} else {
+				zend_error_noreturn(
+					E_ERROR,
+					"Non-static method %s::%s() cannot be called statically",
+					func->common.scope->name->val, func->common.function_name->val);
+			}
 		}
 	} else {
 		zend_error(E_WARNING, "%s() expects parameter 1 to be a valid callback, %s", Z_STRVAL_P(opline->op1.zv), error);
@@ -2532,6 +2609,7 @@ ZEND_VM_HANDLER(60, ZEND_DO_FCALL, ANY, ANY)
 	USE_OPLINE
 	zend_execute_data *call = EX(call);
 	zend_function *fbc = call->func;
+	zend_object *object = Z_OBJ(call->This);
 
 	SAVE_OPLINE();
 	EX(call) = call->prev_execute_data;
@@ -2549,22 +2627,6 @@ ZEND_VM_HANDLER(60, ZEND_DO_FCALL, ANY, ANY)
 			}
 		}
 	}
-	if (fbc->common.scope &&
-		!(fbc->common.fn_flags & ZEND_ACC_STATIC) &&
-		!call->object) {
-
-		if (fbc->common.fn_flags & ZEND_ACC_ALLOW_STATIC) {
-			/* FIXME: output identifiers properly */
-			zend_error(E_STRICT, "Non-static method %s::%s() should not be called statically", fbc->common.scope->name->val, fbc->common.function_name->val);
-			if (UNEXPECTED(EG(exception) != NULL)) {
-				HANDLE_EXCEPTION();
-			}
-		} else {
-			/* FIXME: output identifiers properly */
-			/* An internal function assumes $this is present and won't check that. So PHP would crash by allowing the call. */
-			zend_error_noreturn(E_ERROR, "Non-static method %s::%s() cannot be called statically", fbc->common.scope->name->val, fbc->common.function_name->val);
-		}
-	}
 
 	LOAD_OPLINE();
 
@@ -2574,16 +2636,16 @@ ZEND_VM_HANDLER(60, ZEND_DO_FCALL, ANY, ANY)
 
 		if (fbc->common.scope) {
 			should_change_scope = 1;
-			Z_OBJ(EG(This)) = call->object;
 			/* TODO: we don't set scope if we call an object method ??? */
 			/* See: ext/pdo_sqlite/tests/pdo_fetch_func_001.phpt */
 #if 1
-			EG(scope) = (call->object) ? NULL : fbc->common.scope;
+			EG(scope) = object ? NULL : fbc->common.scope;
 #else 
 			EG(scope) = fbc->common.scope;
 #endif
-		} else {
+		} else {			
 			call->called_scope = EX(called_scope);
+			Z_OBJ(call->This) = Z_OBJ(EX(This));
 		}
 
 		call->prev_execute_data = execute_data;
@@ -2618,7 +2680,7 @@ ZEND_VM_HANDLER(60, ZEND_DO_FCALL, ANY, ANY)
 
 		if (!zend_execute_internal) {
 			/* saves one function call if zend_execute_internal is not used */
-			fbc->internal_function.handler(call->num_args, ret TSRMLS_CC);
+			fbc->internal_function.handler(call, ret TSRMLS_CC);
 		} else {
 			zend_execute_internal(call, ret TSRMLS_CC);
 		}
@@ -2638,7 +2700,6 @@ ZEND_VM_HANDLER(60, ZEND_DO_FCALL, ANY, ANY)
 	} else if (EXPECTED(fbc->type == ZEND_USER_FUNCTION)) {
 		zval *return_value = NULL;
 
-		Z_OBJ(EG(This)) = call->object;
 		EG(scope) = fbc->common.scope;
 		call->symbol_table = NULL;
 		if (RETURN_VALUE_USED(opline)) {
@@ -2668,16 +2729,15 @@ ZEND_VM_HANDLER(60, ZEND_DO_FCALL, ANY, ANY)
 			}
 		}
 	} else { /* ZEND_OVERLOADED_FUNCTION */
-		Z_OBJ(EG(This)) = call->object;
 		EG(scope) = fbc->common.scope;
 
 		ZVAL_NULL(EX_VAR(opline->result.var));
 
 		/* Not sure what should be done here if it's a static method */
-		if (EXPECTED(call->object != NULL)) {
+		if (EXPECTED(object != NULL)) {
 			call->prev_execute_data = execute_data;
 			EG(current_execute_data) = call;
-			call->object->handlers->call_method(fbc->common.function_name, call->object, call->num_args, EX_VAR(opline->result.var) TSRMLS_CC);
+			object->handlers->call_method(fbc->common.function_name, object, call, EX_VAR(opline->result.var) TSRMLS_CC);
 			EG(current_execute_data) = call->prev_execute_data;
 		} else {
 			zend_error_noreturn(E_ERROR, "Cannot call overloaded function for non-object");
@@ -2702,18 +2762,17 @@ ZEND_VM_HANDLER(60, ZEND_DO_FCALL, ANY, ANY)
 	}
 
 ZEND_VM_C_LABEL(fcall_end_change_scope):
-	if (Z_OBJ(EG(This))) {
+	if (object) {
 		if (UNEXPECTED(EG(exception) != NULL) && (opline->op1.num & ZEND_CALL_CTOR)) {
 			if (!(opline->op1.num & ZEND_CALL_CTOR_RESULT_UNUSED)) {
-				Z_DELREF(EG(This));
+				GC_REFCOUNT(object)--;
 			}
-			if (Z_REFCOUNT(EG(This)) == 1) {
-				zend_object_store_ctor_failed(Z_OBJ(EG(This)) TSRMLS_CC);
+			if (GC_REFCOUNT(object) == 1) {
+				zend_object_store_ctor_failed(object TSRMLS_CC);
 			}
 		}
-		OBJ_RELEASE(Z_OBJ(EG(This)));
+		OBJ_RELEASE(object);
 	}
-	Z_OBJ(EG(This)) = EX(object);
 	EG(scope) = EX(scope);
 
 ZEND_VM_C_LABEL(fcall_end):
@@ -3257,12 +3316,12 @@ ZEND_VM_HANDLER(119, ZEND_SEND_ARRAY, ANY, ANY)
 		if (EX(call)->func->common.fn_flags & ZEND_ACC_CLOSURE) {
 			OBJ_RELEASE((zend_object*)EX(call)->func->common.prototype);
 		}
-		if (EX(call)->object) {
-			OBJ_RELEASE(EX(call)->object);
+		if (Z_OBJ(EX(call)->This)) {
+			OBJ_RELEASE(Z_OBJ(EX(call)->This));
 		}
 		EX(call)->func = (zend_function*)&zend_pass_function;
 		EX(call)->called_scope = NULL;
-		EX(call)->object = NULL;
+		Z_OBJ(EX(call)->This) = NULL;
 	} else {
 		uint32_t arg_num = 1;
 
@@ -3320,12 +3379,12 @@ ZEND_VM_HANDLER(119, ZEND_SEND_ARRAY, ANY, ANY)
 						if (EX(call)->func->common.fn_flags & ZEND_ACC_CLOSURE) {
 							OBJ_RELEASE((zend_object*)EX(call)->func->common.prototype);
 						}
-						if (EX(call)->object) {
-							OBJ_RELEASE(EX(call)->object);
+						if (Z_OBJ(EX(call)->This)) {
+							OBJ_RELEASE(Z_OBJ(EX(call)->This));
 						}
 						EX(call)->func = (zend_function*)&zend_pass_function;
 						EX(call)->called_scope = NULL;
-						EX(call)->object = NULL;
+						Z_OBJ(EX(call)->This) = NULL;
 
 						break;
 					}
@@ -3399,12 +3458,12 @@ ZEND_VM_HANDLER(120, ZEND_SEND_USER, VAR|CV, ANY)
 				if (EX(call)->func->common.fn_flags & ZEND_ACC_CLOSURE) {
 					OBJ_RELEASE((zend_object*)EX(call)->func->common.prototype);
 				}
-				if (EX(call)->object) {
-					OBJ_RELEASE(EX(call)->object);
+				if (Z_OBJ(EX(call)->This)) {
+					OBJ_RELEASE(Z_OBJ(EX(call)->This));
 				}
 				EX(call)->func = (zend_function*)&zend_pass_function;
 				EX(call)->called_scope = NULL;
-				EX(call)->object = NULL;
+				Z_OBJ(EX(call)->This) = NULL;
 
 				FREE_OP1();
 				CHECK_EXCEPTION();
@@ -4041,8 +4100,7 @@ ZEND_VM_HANDLER(73, ZEND_INCLUDE_OR_EVAL, CONST|TMP|VAR|CV, ANY)
 
 	ZVAL_UNDEF(&tmp_inc_filename);
 	if (Z_TYPE_P(inc_filename) != IS_STRING) {
-		ZVAL_DUP(&tmp_inc_filename, inc_filename);
-		convert_to_string(&tmp_inc_filename);
+		ZVAL_STR(&tmp_inc_filename, zval_get_string(inc_filename));
 		inc_filename = &tmp_inc_filename;
 	}
 
@@ -4122,7 +4180,7 @@ ZEND_VM_HANDLER(73, ZEND_INCLUDE_OR_EVAL, CONST|TMP|VAR|CV, ANY)
 		}
 
 		call = zend_vm_stack_push_call_frame(
-			(zend_function*)new_op_array, 0, 0, EX(called_scope), EX(object), NULL TSRMLS_CC);
+			(zend_function*)new_op_array, 0, 0, EX(called_scope), Z_OBJ(EX(This)), NULL TSRMLS_CC);
 
 		if (EX(symbol_table)) {
 			call->symbol_table = EX(symbol_table);
@@ -5396,16 +5454,16 @@ ZEND_VM_HANDLER(149, ZEND_HANDLE_EXCEPTION, ANY, ANY)
 			 * arguments pushed to the stack that have to be dtor'ed. */
 			zend_vm_stack_free_args(EX(call) TSRMLS_CC);
 
-			if (call->object) {
+			if (Z_OBJ(call->This)) {
 				if (call->flags & ZEND_CALL_CTOR) {
 					if (!(call->flags & ZEND_CALL_CTOR_RESULT_UNUSED)) {
-						GC_REFCOUNT(call->object)--;
+						GC_REFCOUNT(Z_OBJ(call->This))--;
 					}
-					if (GC_REFCOUNT(call->object) == 1) {
-						zend_object_store_ctor_failed(call->object TSRMLS_CC);
+					if (GC_REFCOUNT(Z_OBJ(call->This)) == 1) {
+						zend_object_store_ctor_failed(Z_OBJ(call->This) TSRMLS_CC);
 					}
 				}
-				OBJ_RELEASE(call->object);
+				OBJ_RELEASE(Z_OBJ(call->This));
 			}
 			EX(call) = call->prev_execute_data;
 			zend_vm_stack_free_call_frame(call TSRMLS_CC);
@@ -5562,7 +5620,7 @@ ZEND_VM_HANDLER(153, ZEND_DECLARE_LAMBDA_FUNCTION, CONST, UNUSED)
 	if (closure_is_static || closure_is_being_defined_inside_static_context) {
 		zend_create_closure(EX_VAR(opline->result.var), Z_FUNC_P(zfunc), EX(called_scope), NULL TSRMLS_CC);
 	} else {
-		zend_create_closure(EX_VAR(opline->result.var), Z_FUNC_P(zfunc), EX(scope), Z_OBJ(EG(This)) ? &EG(This) : NULL TSRMLS_CC);
+		zend_create_closure(EX_VAR(opline->result.var), Z_FUNC_P(zfunc), EX(scope), Z_OBJ(EX(This)) ? &EX(This) : NULL TSRMLS_CC);
 	}
 
 	CHECK_EXCEPTION();
