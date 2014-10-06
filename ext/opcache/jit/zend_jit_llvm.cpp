@@ -9268,8 +9268,6 @@ static int zend_jit_strlen(zend_llvm_ctx  &llvm_ctx,
 	Value *val_ptr = NULL;
 	Value *result = zend_jit_load_slot(llvm_ctx, opline->result.var);
 
-	val_ptr = zend_jit_deref(llvm_ctx, val_ptr, OP1_INFO());
-
 	if (opline->op1_type == IS_CONST) {
 		Value *str_len = NULL;
 		zval *value = opline->op1.zv;
@@ -9309,6 +9307,7 @@ static int zend_jit_strlen(zend_llvm_ctx  &llvm_ctx,
 		PHI_DCL(str_len, 6);
 
 		val_ptr = zend_jit_load_operand(llvm_ctx, opline->op1_type, opline->op1, OP1_SSA_VAR(), OP1_INFO(), 0, opline);
+		val_ptr = zend_jit_deref(llvm_ctx, val_ptr, OP1_INFO());
 
 		if (OP1_INFO() & MAY_BE_STRING) {
 			if (OP1_INFO() & (MAY_BE_ANY - MAY_BE_STRING)) {
