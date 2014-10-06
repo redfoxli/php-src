@@ -4620,7 +4620,7 @@ numeric_dim:
 				zend_jit_expected_br(llvm_ctx,
 					llvm_ctx.builder.CreateICmpEQ(
 						dim_type,
-						llvm_ctx.builder.getInt8(IS_TRUE)),
+						llvm_ctx.builder.getInt8(IS_FALSE)),
 					bb_false,
 					bb_follow);
 				llvm_ctx.builder.SetInsertPoint(bb_false);
