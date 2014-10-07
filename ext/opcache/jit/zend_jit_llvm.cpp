@@ -10921,14 +10921,6 @@ static int zend_jit_init_func_execute_data(zend_llvm_ctx    &llvm_ctx,
 			execute_data,
 			offsetof(zend_execute_data, return_value),
 			PointerType::getUnqual(llvm_ctx.zval_ptr_type)), 4);
-	//JIT: EX(scope) = EG(scope);
-	llvm_ctx.builder.CreateAlignedStore(
-		llvm_ctx.builder.CreateAlignedLoad(llvm_ctx._EG_scope, 4), 
-		zend_jit_GEP(
-			llvm_ctx,
-			execute_data,
-			offsetof(zend_execute_data, scope),
-			PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_class_entry_type))), 4);
 	//JIT: EX(delayed_exception) = NULL;
 	llvm_ctx.builder.CreateAlignedStore(
 		llvm_ctx.builder.CreateIntToPtr(
@@ -12169,22 +12161,39 @@ static int zend_jit_do_fcall(zend_llvm_ctx    &llvm_ctx,
 			llvm_ctx.builder.SetInsertPoint(bb_user);
 		}
 
-		//JIT: EG(scope) = fbc->common.scope;
+		//JIT: call->scope = EG(scope) = fbc->common.scope;
 		if (func) {
 			llvm_ctx.builder.CreateAlignedStore(
 				llvm_ctx.builder.CreateIntToPtr(
 					LLVM_GET_LONG((zend_uintptr_t)func->common.scope),
 					PointerType::getUnqual(llvm_ctx.zend_class_entry_type)),
 				llvm_ctx._EG_scope, 4);
-		} else {
 			llvm_ctx.builder.CreateAlignedStore(
-				llvm_ctx.builder.CreateAlignedLoad(
-					zend_jit_GEP(
-						llvm_ctx,
-						func_addr,
-						offsetof(zend_function, common.scope),
-						PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_class_entry_type))), 4),
-				llvm_ctx._EG_scope, 4); 
+				llvm_ctx.builder.CreateIntToPtr(
+					LLVM_GET_LONG((zend_uintptr_t)func->common.scope),
+					PointerType::getUnqual(llvm_ctx.zend_class_entry_type)),
+				zend_jit_GEP(
+					llvm_ctx,
+					call,
+					offsetof(zend_execute_data, scope),
+					PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_class_entry_type))), 4);
+		} else {
+		    Value *scope = llvm_ctx.builder.CreateAlignedLoad(
+				zend_jit_GEP(
+					llvm_ctx,
+					func_addr,
+					offsetof(zend_function, common.scope),
+					PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_class_entry_type))), 4);
+			llvm_ctx.builder.CreateAlignedStore(
+				scope,
+				llvm_ctx._EG_scope, 4);
+			llvm_ctx.builder.CreateAlignedStore(
+				scope,
+				zend_jit_GEP(
+					llvm_ctx,
+					call,
+					offsetof(zend_execute_data, scope),
+					PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_class_entry_type))), 4);
 		}
 		//JIT: call->symbol_table = NULL;
 		llvm_ctx.builder.CreateAlignedStore(
