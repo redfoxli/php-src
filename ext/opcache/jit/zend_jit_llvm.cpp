@@ -12203,8 +12203,14 @@ static int zend_jit_do_fcall(zend_llvm_ctx    &llvm_ctx,
 			return_value = zend_jit_load_slot(llvm_ctx, opline->result.var);
 			//JIT: ZVAL_NULL(return_value);
 			zend_jit_save_zval_type_info(llvm_ctx, return_value, llvm_ctx.builder.getInt32(IS_NULL));
-			//JIT: Z_VAR_FLAGS_P(return_value) = (fbc->common.fn_flags & ZEND_ACC_RETURN_REFERENCE) != 0 ? IS_VAR_RET_REF : 0;
-			zend_jit_set_retref_flag(llvm_ctx, return_value, func, func_addr);
+			//JIT: Z_VAR_FLAGS_P(return_value) = 0;
+			llvm_ctx.builder.CreateAlignedStore(
+				llvm_ctx.builder.getInt32(0),
+				zend_jit_GEP(
+					llvm_ctx,
+					return_value,
+					offsetof(zval, u2.var_flags),
+					PointerType::getUnqual(Type::getInt32Ty(llvm_ctx.context))), 4);
 		} else {
 			return_value = llvm_ctx.builder.CreateIntToPtr(
 				LLVM_GET_LONG(0),
