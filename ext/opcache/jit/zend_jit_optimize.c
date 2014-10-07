@@ -3705,14 +3705,12 @@ static void zend_jit_update_type_info(zend_jit_context *ctx,
 				tmp = (tmp & (MAY_BE_DEF|MAY_BE_RC1|MAY_BE_RCN|MAY_BE_REF)) |
 					(tmp & info->arg_info[opline->op1.num-1].info.type);
 			} else {
-#if JIT_SAFE_RECV
 				if (opline->opcode == ZEND_RECV) {
 					/* it's possible that caller pass less arguments than function excpects */
-					tmp |= MAY_BE_UNDEF|MAY_BE_RCN;
+					tmp |= MAY_BE_UNDEF|MAY_BE_NULL|MAY_BE_RC1;
 				}
 			}
-#endif
-#if 1
+#if 0
 			/* We won't recieve unused arguments */
 			if (ssa_var[ssa[i].result_def].use_chain < 0 &&
 			    ssa_var[ssa[i].result_def].phi_use_chain == NULL &&

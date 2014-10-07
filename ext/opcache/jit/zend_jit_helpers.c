@@ -139,6 +139,62 @@ ZEND_FASTCALL void zend_jit_helper_check_type_hint(zend_function *zf, uint32_t a
 	}
 }
 
+static inline int zend_verify_missing_arg_type(zend_function *zf, uint32_t arg_num, zend_ulong fetch_type TSRMLS_DC)
+{
+	zend_arg_info *cur_arg_info;
+	char *need_msg;
+	zend_class_entry *ce;
+
+	if (UNEXPECTED(!zf->common.arg_info)) {
+		return 1;
+	}
+
+	if (EXPECTED(arg_num <= zf->common.num_args)) {
+		cur_arg_info = &zf->common.arg_info[arg_num-1];
+	} else if (zf->common.fn_flags & ZEND_ACC_VARIADIC) {
+		cur_arg_info = &zf->common.arg_info[zf->common.num_args-1];
+	} else {
+		return 1;
+	}
+
+	if (cur_arg_info->class_name) {
+		char *class_name;
+
+		need_msg = zend_verify_arg_class_kind(cur_arg_info, fetch_type, &class_name, &ce TSRMLS_CC);
+		zend_verify_arg_error(E_RECOVERABLE_ERROR, zf, arg_num, need_msg, class_name, "none", "", NULL TSRMLS_CC);
+		return 0;
+	} else if (cur_arg_info->type_hint) {
+		if (cur_arg_info->type_hint == IS_ARRAY) {
+			zend_verify_arg_error(E_RECOVERABLE_ERROR, zf, arg_num, "be of the type array", "", "none", "", NULL TSRMLS_CC);
+		} else if (cur_arg_info->type_hint == IS_CALLABLE) {
+			zend_verify_arg_error(E_RECOVERABLE_ERROR, zf, arg_num, "be callable", "", "none", "", NULL TSRMLS_CC);
+#if ZEND_DEBUG
+		} else {
+			zend_error(E_ERROR, "Unknown typehint");
+#endif
+		}
+		return 0;
+	}
+	return 1;
+}
+
+ZEND_FASTCALL void zend_jit_helper_check_missing_arg(zend_execute_data *execute_data, uint32_t arg_num)
+{
+	if (EXPECTED(!(EX(func)->common.fn_flags & ZEND_ACC_HAS_TYPE_HINTS)) ||
+	    zend_verify_missing_arg_type(EX(func), arg_num, EX(opline)->extended_value TSRMLS_CC)) {
+		const char *class_name = EX(func)->common.scope ? EX(func)->common.scope->name->val : "";
+		const char *space = EX(func)->common.scope ? "::" : "";
+		const char *func_name = EX(func)->common.function_name ? EX(func)->common.function_name->val : "main";
+		zend_execute_data *ptr = EX(prev_execute_data);
+
+		if (ptr && ptr->func && ZEND_USER_CODE(ptr->func->common.type)) {
+			zend_error(E_WARNING, "Missing argument %u for %s%s%s(), called in %s on line %d and defined", arg_num, class_name, space, func_name, ptr->func->op_array.filename->val, ptr->opline->lineno);
+		} else {
+			zend_error(E_WARNING, "Missing argument %u for %s%s%s()", arg_num, class_name, space, func_name);
+		}
+	}
+}
+
 ZEND_FASTCALL void zend_jit_helper_slow_fetch_address_obj(zval *container, zval *retval, zval *result, int is_ref) {
 	if (UNEXPECTED(retval == &EG(uninitialized_zval))) {
 		zend_class_entry *ce = Z_OBJCE_P(container);

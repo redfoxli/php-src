@@ -29,7 +29,6 @@
 
 #define JIT_STAT        1    /* print JIT statistics */
 
-#define JIT_SAFE_RECV   1    /* safe (but slower) handling of missing arguments  */
 #define JIT_SAFE_UNDEF  1    /* safe (but slower) handling of exceptions thrown 
                                 from error handler because of undefined variable */
 

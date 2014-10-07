@@ -383,7 +383,14 @@ static inline int ssa_result_var(zend_op_array *op_array, zend_op *opline)
 	{																		\
 		zend_jit_func_info *info = JIT_DATA(op_array); \
 		if (opline->opN##_type == IS_CONST) {							\
-			uint32_t tmp = (1 << (Z_TYPE_P(opline->opN.zv) - 1)) | MAY_BE_DEF | MAY_BE_RC1; \
+			uint32_t tmp; \
+			if (Z_TYPE_P(opline->opN.zv) == IS_CONSTANT) { \
+				tmp = MAY_BE_ANY; \
+			} else if (Z_TYPE_P(opline->opN.zv) == IS_CONSTANT_AST) { \
+				tmp = MAY_BE_ANY; \
+			} else { \
+				tmp = (1 << (Z_TYPE_P(opline->opN.zv) - 1)) | MAY_BE_DEF | MAY_BE_RC1; \
+			} \
 			if (tmp & MAY_BE_ARRAY) { \
 				/* TODO: more accurate array constant handling ??? */ \
 				tmp |= MAY_BE_ARRAY_KEY_ANY | MAY_BE_ARRAY_OF_ANY | MAY_BE_ARRAY_OF_REF; \
