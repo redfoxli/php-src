@@ -10415,12 +10415,12 @@ static Value* zend_jit_vm_stack_push_call_frame(zend_llvm_ctx    &llvm_ctx,
 			PointerType::getUnqual(Type::getInt32Ty(llvm_ctx.context))), 4);
 	//JIT: call->flags = flags;
 	llvm_ctx.builder.CreateAlignedStore(
-		llvm_ctx.builder.getInt8(0),
+		llvm_ctx.builder.getInt32(VM_FRAME_TOP_FUNCTION),
 		zend_jit_GEP(
 			llvm_ctx,
 			call,
-			offsetof(zend_execute_data, flags),
-			PointerType::getUnqual(Type::getInt8Ty(llvm_ctx.context))), 4);
+			offsetof(zend_execute_data, frame_info),
+			PointerType::getUnqual(Type::getInt32Ty(llvm_ctx.context))), 4);
 	//JIT: call->called_scope = called_scope;
 	llvm_ctx.builder.CreateAlignedStore(
 		LLVM_GET_LONG(0), //???
@@ -10888,7 +10888,6 @@ static int zend_jit_init_func_execute_data(zend_llvm_ctx    &llvm_ctx,
                                            zend_function    *func,
                                            Value            *func_addr,
                                            Value            *return_value,
-                                           vm_frame_kind     frame_kind,
                                            uint32_t          num_args,
                                            uint32_t          lineno)
 {
@@ -10914,14 +10913,6 @@ static int zend_jit_init_func_execute_data(zend_llvm_ctx    &llvm_ctx,
 			execute_data,
 			offsetof(zend_execute_data, call),
 			PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_execute_data_type))), 4);
-	//JIT: EX(frame_kind) = frame_kind;
-	llvm_ctx.builder.CreateAlignedStore(
-		llvm_ctx.builder.getInt8(frame_kind),
-		zend_jit_GEP(
-			llvm_ctx,
-			execute_data,
-			offsetof(zend_execute_data, frame_kind),
-			PointerType::getUnqual(Type::getInt8Ty(llvm_ctx.context))), 4);
 	//JIT: EX(return_value) = return_value;
 	llvm_ctx.builder.CreateAlignedStore(
 		return_value,
@@ -10950,11 +10941,11 @@ static int zend_jit_init_func_execute_data(zend_llvm_ctx    &llvm_ctx,
 			PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_object_type))), 4);
 	//JIT: ZVAL_UNDEF(&EX(old_error_reporting));
 	llvm_ctx.builder.CreateAlignedStore(
-		llvm_ctx.builder.getInt32(IS_UNDEF),
+		llvm_ctx.builder.getInt32(-1),
 		zend_jit_GEP(
 			llvm_ctx,
 			execute_data,
-			offsetof(zend_execute_data, old_error_reporting.u1.type_info),
+			offsetof(zend_execute_data, silence_op_num),
 			PointerType::getUnqual(Type::getInt32Ty(llvm_ctx.context))), 4);
 
 #if 1
@@ -12285,7 +12276,7 @@ static int zend_jit_do_fcall(zend_llvm_ctx    &llvm_ctx,
 					offsetof(zend_execute_data, prev_execute_data),
 					PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_execute_data_type))), 4);
 			//JIT: i_init_func_execute_data(call, &fbc->op_array, return_value, VM_FRAME_TOP_FUNCTION TSRMLS_CC);
-			zend_jit_init_func_execute_data(llvm_ctx, call, object, func, func_addr, return_value, VM_FRAME_TOP_FUNCTION, num_args, opline->lineno);
+			zend_jit_init_func_execute_data(llvm_ctx, call, object, func, func_addr, return_value, num_args, opline->lineno);
 
 			//JIT: zend_execute_ex(call TSRMLS_CC);
 			Function *_helper = zend_jit_get_helper(
