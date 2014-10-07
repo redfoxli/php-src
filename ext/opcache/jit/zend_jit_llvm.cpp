@@ -12169,11 +12169,16 @@ static int zend_jit_do_fcall(zend_llvm_ctx    &llvm_ctx,
 
 		//JIT: call->scope = EG(scope) = fbc->common.scope;
 		if (func) {
-			llvm_ctx.builder.CreateAlignedStore(
-				llvm_ctx.builder.CreateIntToPtr(
-					LLVM_GET_LONG((zend_uintptr_t)func->common.scope),
-					PointerType::getUnqual(llvm_ctx.zend_class_entry_type)),
-				llvm_ctx._EG_scope, 4);
+			if (!func ||
+			    func->op_array.type != ZEND_USER_FUNCTION ||
+			    op_array->type != ZEND_USER_FUNCTION ||
+		    	op_array->scope != func->op_array.scope) {
+				llvm_ctx.builder.CreateAlignedStore(
+					llvm_ctx.builder.CreateIntToPtr(
+						LLVM_GET_LONG((zend_uintptr_t)func->common.scope),
+						PointerType::getUnqual(llvm_ctx.zend_class_entry_type)),
+					llvm_ctx._EG_scope, 4);
+			}
 			llvm_ctx.builder.CreateAlignedStore(
 				llvm_ctx.builder.CreateIntToPtr(
 					LLVM_GET_LONG((zend_uintptr_t)func->common.scope),
@@ -12384,15 +12389,20 @@ static int zend_jit_do_fcall(zend_llvm_ctx    &llvm_ctx,
 			llvm_ctx.builder.CreateBr(bb_end);
 			llvm_ctx.builder.SetInsertPoint(bb_end);
 		}
-		//JIT: EG(scope) = EX(scope);
-		llvm_ctx.builder.CreateAlignedStore(
-			llvm_ctx.builder.CreateAlignedLoad(
-				zend_jit_GEP(
-					llvm_ctx,
-					llvm_ctx._execute_data,
-					offsetof(zend_execute_data, scope),
-					PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_class_entry_type))), 4),
-			llvm_ctx._EG_scope, 4);
+		if (!func ||
+		    func->op_array.type != ZEND_USER_FUNCTION ||
+		    op_array->type != ZEND_USER_FUNCTION ||
+		    op_array->scope != func->op_array.scope) {
+			//JIT: EG(scope) = EX(scope);
+			llvm_ctx.builder.CreateAlignedStore(
+				llvm_ctx.builder.CreateAlignedLoad(
+					zend_jit_GEP(
+						llvm_ctx,
+						llvm_ctx._execute_data,
+						offsetof(zend_execute_data, scope),
+						PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_class_entry_type))), 4),
+				llvm_ctx._EG_scope, 4);
+		}
 		if (bb_fcall_end) {
 			llvm_ctx.builder.CreateBr(bb_fcall_end);
 		}
