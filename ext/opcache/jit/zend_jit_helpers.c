@@ -195,21 +195,23 @@ ZEND_FASTCALL void zend_jit_helper_check_missing_arg(zend_execute_data *execute_
 	}
 }
 
-ZEND_FASTCALL void zend_jit_helper_slow_fetch_address_obj(zval *container, zval *retval, zval *result, int is_ref) {
+ZEND_FASTCALL int zend_jit_helper_slow_fetch_address_obj(zval *container, zval *retval) {
 	if (UNEXPECTED(retval == &EG(uninitialized_zval))) {
 		zend_class_entry *ce = Z_OBJCE_P(container);
 
-		ZVAL_NULL(result);
 		zend_error(E_NOTICE, "Indirect modification of overloaded element of %s has no effect", ce->name->val);
+		return -1;
 	} else if (EXPECTED(retval && Z_TYPE_P(retval) != IS_UNDEF)) {
 		if (!Z_ISREF_P(retval)) {
 			if (Z_REFCOUNTED_P(retval) &&
 					Z_REFCOUNT_P(retval) > 1) {
 				if (Z_TYPE_P(retval) != IS_OBJECT) {
 					Z_DELREF_P(retval);
-					ZVAL_DUP(result, retval);
+					zval_copy_ctor_func(retval);
+					return 0;
 				} else {
-					ZVAL_COPY(result, retval);
+					Z_TRY_ADDREF_P(retval);
+					return 0;
 				}
 			}
 			if (Z_TYPE_P(retval) != IS_OBJECT) {
@@ -217,14 +219,9 @@ ZEND_FASTCALL void zend_jit_helper_slow_fetch_address_obj(zval *container, zval 
 				zend_error(E_NOTICE, "Indirect modification of overloaded element of %s has no effect", ce->name->val);
 			}
 		}
-		if (result != retval) {
-			if (is_ref) {
-				ZVAL_MAKE_REF(retval);
-			}
-			ZVAL_INDIRECT(result, retval);
-		}
+		return 0;
 	} else {
-		ZVAL_INDIRECT(result, &EG(error_zval));
+		return 1;
 	}
 }
 
@@ -258,6 +255,55 @@ ZEND_FASTCALL int zend_jit_helper_slow_strlen_obj(zval *obj, size_t *len) {
 	*len = str->len;
 	zval_dtor(&tmp);
 	return 1;
+}
+
+ZEND_FASTCALL void zend_jit_helper_assign_to_string_offset(zval *str, zend_long offset, zval *value, zval *result) {
+	zend_string *old_str;
+
+	if (offset < 0) {
+		zend_error(E_WARNING, "Illegal string offset:  " ZEND_LONG_FMT, offset);
+		zend_string_release(Z_STR_P(str));
+		if (result) {
+			ZVAL_NULL(result);
+		}
+		return;
+	}
+
+	old_str = Z_STR_P(str);
+	if ((size_t)offset >= Z_STRLEN_P(str)) {
+		zend_long old_len = Z_STRLEN_P(str);
+		Z_STR_P(str) = zend_string_realloc(Z_STR_P(str), offset + 1, 0);
+		Z_TYPE_INFO_P(str) = IS_STRING_EX;
+		memset(Z_STRVAL_P(str) + old_len, ' ', offset - old_len);
+		Z_STRVAL_P(str)[offset+1] = 0;
+	} else if (!Z_REFCOUNTED_P(str)) {
+		Z_STR_P(str) = zend_string_init(Z_STRVAL_P(str), Z_STRLEN_P(str), 0);
+		Z_TYPE_INFO_P(str) = IS_STRING_EX;
+	}
+
+	if (Z_TYPE_P(value) != IS_STRING) {
+		zend_string *tmp = zval_get_string(value);
+
+		Z_STRVAL_P(str)[offset] = tmp->val[0];
+		zend_string_release(tmp);
+	} else {
+		Z_STRVAL_P(str)[offset] = Z_STRVAL_P(value)[0];
+	}
+	/*
+	 * the value of an assignment to a string offset is undefined
+	T(result->u.var).var = &T->str_offset.str;
+	*/
+
+	zend_string_release(old_str);
+	if (result) {
+		zend_uchar c = (zend_uchar)Z_STRVAL_P(str)[offset];
+
+		if (CG(one_char_string)[c]) {
+			ZVAL_INTERNED_STR(result, CG(one_char_string)[c]);
+		} else {
+			ZVAL_NEW_STR(result, zend_string_init(Z_STRVAL_P(str) + offset, 1, 0));
+		}
+	}
 }
 
 /*
