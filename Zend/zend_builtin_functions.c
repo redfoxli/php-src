@@ -858,7 +858,7 @@ ZEND_FUNCTION(get_parent_class)
 			&& (name = Z_OBJ_HT_P(arg)->get_class_name(Z_OBJ_P(arg), 1 TSRMLS_CC)) != NULL) {
 			RETURN_STR(name);
 		} else {
-			ce = zend_get_class_entry(Z_OBJ_P(arg) TSRMLS_CC);
+			ce = Z_OBJ_P(arg)->ce;
 		}
 	} else if (Z_TYPE_P(arg) == IS_STRING) {
 	    ce = zend_lookup_class(Z_STR_P(arg) TSRMLS_CC);
@@ -905,7 +905,7 @@ static void is_a_impl(INTERNAL_FUNCTION_PARAMETERS, zend_bool only_subclass) /* 
 		if (!instance_ce) {
 			RETURN_FALSE;
 		}
-	} else if (Z_TYPE_P(obj) == IS_OBJECT && HAS_CLASS_ENTRY(*obj)) {
+	} else if (Z_TYPE_P(obj) == IS_OBJECT) {
 		instance_ce = Z_OBJCE_P(obj);
 	} else {
 		RETURN_FALSE;
@@ -1089,10 +1089,6 @@ ZEND_FUNCTION(get_class_methods)
 	}
 
 	if (Z_TYPE_P(klass) == IS_OBJECT) {
-		/* TBI!! new object handlers */
-		if (!HAS_CLASS_ENTRY(*klass)) {
-			RETURN_FALSE;
-		}
 		ce = Z_OBJCE_P(klass);
 	} else if (Z_TYPE_P(klass) == IS_STRING) {
 	    ce = zend_lookup_class(Z_STR_P(klass) TSRMLS_CC);
@@ -2185,9 +2181,7 @@ ZEND_FUNCTION(debug_print_backtrace)
 			function_name = (func->common.scope &&
 			                 func->common.scope->trait_aliases) ?
 				zend_resolve_method_name(
-					(object ?
-						zend_get_class_entry(object TSRMLS_CC) : 
-						func->common.scope), func)->val :
+					(object ? object->ce : func->common.scope), func)->val :
 				(func->common.function_name ? 
 					func->common.function_name->val : NULL);
 		} else {
@@ -2407,9 +2401,7 @@ ZEND_API void zend_fetch_debug_backtrace(zval *return_value, int skip_last, int 
 			function_name = (func->common.scope &&
 			                 func->common.scope->trait_aliases) ?
 				zend_resolve_method_name(
-					(object ?
-						zend_get_class_entry(object TSRMLS_CC) : 
-						func->common.scope), func)->val :
+					(object ? object->ce : func->common.scope), func)->val :
 				(func->common.function_name ? 
 					func->common.function_name->val : NULL);
 		} else {

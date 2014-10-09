@@ -727,8 +727,7 @@ static void php_var_serialize_class(smart_str *buf, zval *struc, zval *retval_pt
 				php_var_serialize_string(buf, Z_STRVAL_P(name), Z_STRLEN_P(name));
 				php_var_serialize_intern(buf, d, var_hash TSRMLS_CC);
 			} else {
-				zend_class_entry *ce;
-				ce = zend_get_class_entry(Z_OBJ_P(struc) TSRMLS_CC);
+				zend_class_entry *ce = Z_OBJ_P(struc)->ce;
 				if (ce) {
 					zend_string *prot_name, *priv_name;
 
@@ -838,13 +837,9 @@ again:
 				zval retval;
 				zval fname;
 				int res;
-				zend_class_entry *ce = NULL;
+				zend_class_entry *ce = Z_OBJCE_P(struc);
 
-				if (Z_OBJ_HT_P(struc)->get_class_entry) {
-					ce = Z_OBJCE_P(struc);
-				}
-
-				if (ce && ce->serialize != NULL) {
+				if (ce->serialize != NULL) {
 					/* has custom handler */
 					unsigned char *serialized_data = NULL;
 					size_t serialized_length;
