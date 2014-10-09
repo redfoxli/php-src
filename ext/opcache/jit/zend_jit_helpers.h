@@ -52,7 +52,7 @@ ZEND_FASTCALL void zend_jit_helper_check_type_hint(zend_function *zf, uint32_t a
 ZEND_FASTCALL void zend_jit_helper_check_missing_arg(zend_execute_data *execute_data, uint32_t arg_num);
 ZEND_FASTCALL zend_ulong zend_jit_helper_slow_str_index(zval *dim, uint32_t type);
 ZEND_FASTCALL zend_ulong zend_jit_helper_dval_to_lval(double dval);
-ZEND_FASTCALL void zend_jit_helper_slow_fetch_address_obj(zval *container, zval *retval, zval *result, int is_ref);
+ZEND_FASTCALL int zend_jit_helper_slow_fetch_address_obj(zval *container, zval *retval);
 ZEND_FASTCALL void zend_jit_helper_new_ref(zval *ref, zval* val);
 ZEND_FASTCALL void zend_jit_helper_init_array(zval *zv, uint32_t size);
 ZEND_FASTCALL int zend_jit_helper_slow_strlen_obj(zval *obj, size_t *len);
