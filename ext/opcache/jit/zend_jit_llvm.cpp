@@ -10662,8 +10662,6 @@ static int zend_jit_assign_dim(zend_llvm_ctx     &llvm_ctx,
 				opline, 
 				&may_threw);
 
-		ZEND_ASSERT(bb_uninitialized == NULL);
-
 		if (ret) {
 			zend_jit_assign_to_variable(
 					llvm_ctx,
@@ -10777,6 +10775,16 @@ static int zend_jit_assign_dim(zend_llvm_ctx     &llvm_ctx,
 						LLVM_GET_LONG(0),
 						llvm_ctx.zval_ptr_type),
 					opline);
+			if (!bb_finish) {
+				bb_finish = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+			}
+			llvm_ctx.builder.CreateBr(bb_finish);
+		}
+		if (bb_uninitialized) {
+			llvm_ctx.builder.SetInsertPoint(bb_uninitialized);
+			if (RETURN_VALUE_USED(opline)) {
+				zend_jit_save_zval_type_info(llvm_ctx, result, llvm_ctx.builder.getInt32(IS_NULL));
+			}
 			if (!bb_finish) {
 				bb_finish = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 			}
