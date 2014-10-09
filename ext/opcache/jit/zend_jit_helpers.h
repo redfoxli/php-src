@@ -56,6 +56,7 @@ ZEND_FASTCALL void zend_jit_helper_slow_fetch_address_obj(zval *container, zval 
 ZEND_FASTCALL void zend_jit_helper_new_ref(zval *ref, zval* val);
 ZEND_FASTCALL void zend_jit_helper_init_array(zval *zv, uint32_t size);
 ZEND_FASTCALL int zend_jit_helper_slow_strlen_obj(zval *obj, size_t *len);
+ZEND_FASTCALL void zend_jit_helper_assign_to_string_offset(zval *str, zend_long offset, zval *value, zval *result);
 
 #ifdef __cplusplus
 }
