@@ -22,6 +22,7 @@
 #define _ZEND_JIT_CODEGEN_H_
 
 #include <zend.h>
+#include <zend_execute.h>
 
 #include "jit/zend_jit_config.h"
 //???#include "zend_jit_common.h"
