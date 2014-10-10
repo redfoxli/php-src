@@ -10566,6 +10566,7 @@ static int zend_jit_assign_dim(zend_llvm_ctx     &llvm_ctx,
 	Value *op1_addr = NULL;
 	Value *op1_type = NULL;
 	zend_bool may_threw = 0;
+	Value *dim = NULL;
 
 	//TODO: object supports
 	if (opline->op1_type != IS_CV || OP1_MAY_BE(MAY_BE_REF|MAY_BE_OBJECT)) {
@@ -10615,7 +10616,6 @@ static int zend_jit_assign_dim(zend_llvm_ctx     &llvm_ctx,
 		znode_op dummy;
 		Value *ret;
 		Value *result;
-		Value *dim;
 		Value *value;
 		Value *offset;
 		Value *new_element;
@@ -10628,8 +10628,11 @@ static int zend_jit_assign_dim(zend_llvm_ctx     &llvm_ctx,
 			llvm_ctx.builder.SetInsertPoint(bb_follow);
 		}
 
-		dim = zend_jit_load_operand(llvm_ctx,
-				opline->op2_type, opline->op2, OP2_SSA_VAR(), OP2_INFO(), 0, opline);
+		if (opline->op2_type != IS_UNUSED) {
+			dim = zend_jit_load_operand(llvm_ctx,
+					opline->op2_type, opline->op2, OP2_SSA_VAR(), OP2_INFO(), 0, opline);
+		}
+
 		value = zend_jit_load_operand(llvm_ctx,
 				(opline + 1)->op1_type, (opline + 1)->op1, OP1_DATA_SSA_VAR(), OP1_DATA_INFO(), 0, opline);
 
@@ -10693,28 +10696,31 @@ static int zend_jit_assign_dim(zend_llvm_ctx     &llvm_ctx,
 						OP1_DATA_INFO());
 			}
 
-			if (!bb_finish) {
-				bb_finish = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
-			}
-			llvm_ctx.builder.CreateBr(bb_finish);
-
 			if ((opline + 1)->op1_type == IS_VAR) {
 				if (!zend_jit_free_operand(llvm_ctx,
 							(opline + 1)->op1_type, value, NULL, OP1_DATA_INFO(), opline->lineno)) {
 					return 0;
 				}
 			}
+
+			if (!bb_finish) {
+				bb_finish = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+			}
+
+			llvm_ctx.builder.CreateBr(bb_finish);
 			//TODO:??  FREE_OP_VAR_PTR(free_op_data2);
 		}
 
 		if (bb_error) {
 			llvm_ctx.builder.SetInsertPoint(bb_error);
-			if (!zend_jit_free_operand(llvm_ctx, (opline + 1)->op1_type, value, NULL, OP1_DATA_INFO(), opline->lineno)) {
-				return 0;
-			}
 
 			if (RETURN_VALUE_USED(opline)) {
 				zend_jit_save_zval_type_info(llvm_ctx, result, llvm_ctx.builder.getInt32(IS_NULL));
+			}
+
+			if (!zend_jit_free_operand(llvm_ctx,
+						(opline + 1)->op1_type, value, NULL, OP1_DATA_INFO(), opline->lineno)) {
+				return 0;
 			}
 
 			if (!bb_finish) {
@@ -10756,6 +10762,13 @@ static int zend_jit_assign_dim(zend_llvm_ctx     &llvm_ctx,
 						OP1_DATA_INFO());
 			}
 
+			if ((opline + 1)->op1_type == IS_VAR) {
+				if (!zend_jit_free_operand(llvm_ctx,
+							(opline + 1)->op1_type, value, NULL, OP1_DATA_INFO(), opline->lineno)) {
+					return 0;
+				}
+			}
+
 			if (!bb_finish) {
 				bb_finish = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 			}
@@ -10775,16 +10788,29 @@ static int zend_jit_assign_dim(zend_llvm_ctx     &llvm_ctx,
 						LLVM_GET_LONG(0),
 						llvm_ctx.zval_ptr_type),
 					opline);
+
+			if (!zend_jit_free_operand(llvm_ctx,
+						(opline + 1)->op1_type, value, NULL, OP1_DATA_INFO(), opline->lineno)) {
+				return 0;
+			}
+
 			if (!bb_finish) {
 				bb_finish = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 			}
 			llvm_ctx.builder.CreateBr(bb_finish);
 		}
+
 		if (bb_uninitialized) {
 			llvm_ctx.builder.SetInsertPoint(bb_uninitialized);
 			if (RETURN_VALUE_USED(opline)) {
 				zend_jit_save_zval_type_info(llvm_ctx, result, llvm_ctx.builder.getInt32(IS_NULL));
 			}
+
+			if (!zend_jit_free_operand(llvm_ctx,
+						(opline + 1)->op1_type, value, NULL, OP1_DATA_INFO(), opline->lineno)) {
+				return 0;
+			}
+
 			if (!bb_finish) {
 				bb_finish = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 			}
@@ -10794,6 +10820,10 @@ static int zend_jit_assign_dim(zend_llvm_ctx     &llvm_ctx,
 
 	if (bb_finish) {
 		llvm_ctx.builder.SetInsertPoint(bb_finish);
+	}
+
+	if (dim && !zend_jit_free_operand(llvm_ctx, opline->op2_type, dim, NULL, OP2_INFO(), opline->lineno)) {
+	   	return 0;
 	}
 
 	if (!zend_jit_free_operand(llvm_ctx, opline->op1_type, op1_addr, NULL, OP1_INFO(), opline->lineno)) {
@@ -13766,11 +13796,11 @@ static int zend_jit_codegen_ex(zend_jit_context *ctx,
 				case ZEND_ASSIGN:
 					if (!zend_jit_assign(llvm_ctx, op_array, opline)) return 0;
 					break;
-//???
-#if 0
 				case ZEND_ASSIGN_DIM:
 					if (!zend_jit_assign_dim(llvm_ctx, ctx, op_array, opline)) return 0;
 					break;
+//???
+#if 0
 				case ZEND_ASSIGN_OBJ:
 					if (!zend_jit_assign_obj(llvm_ctx, ctx, op_array, opline)) return 0;
 					break;
