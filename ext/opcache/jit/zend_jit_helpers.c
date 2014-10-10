@@ -195,7 +195,7 @@ ZEND_FASTCALL void zend_jit_helper_check_missing_arg(zend_execute_data *execute_
 	}
 }
 
-ZEND_FASTCALL int zend_jit_helper_slow_fetch_address_obj(zval *container, zval *retval) {
+ZEND_FASTCALL int zend_jit_helper_slow_fetch_address_obj(zval *container, zval *retval, zval *result) {
 	if (UNEXPECTED(retval == &EG(uninitialized_zval))) {
 		zend_class_entry *ce = Z_OBJCE_P(container);
 
@@ -207,10 +207,10 @@ ZEND_FASTCALL int zend_jit_helper_slow_fetch_address_obj(zval *container, zval *
 					Z_REFCOUNT_P(retval) > 1) {
 				if (Z_TYPE_P(retval) != IS_OBJECT) {
 					Z_DELREF_P(retval);
-					zval_copy_ctor_func(retval);
+					ZVAL_DUP(result, retval);
 					return 0;
 				} else {
-					Z_ADDREF_P(retval);
+					ZVAL_COPY(result, retval);
 					return 0;
 				}
 			}
