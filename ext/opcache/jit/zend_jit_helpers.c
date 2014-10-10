@@ -210,7 +210,7 @@ ZEND_FASTCALL int zend_jit_helper_slow_fetch_address_obj(zval *container, zval *
 					zval_copy_ctor_func(retval);
 					return 0;
 				} else {
-					Z_TRY_ADDREF_P(retval);
+					Z_ADDREF_P(retval);
 					return 0;
 				}
 			}
