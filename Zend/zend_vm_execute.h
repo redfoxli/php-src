@@ -3082,13 +3082,8 @@ static int ZEND_FASTCALL  ZEND_FE_RESET_SPEC_CONST_HANDLER(ZEND_OPCODE_HANDLER_A
 			}
 			if (Z_REFCOUNTED_P(array_ref)) Z_ADDREF_P(array_ref);
 		} else if (Z_TYPE_P(array_ptr) == IS_OBJECT) {
-			if(Z_OBJ_HT_P(array_ptr)->get_class_entry == NULL) {
-				zend_error(E_WARNING, "foreach() cannot iterate over objects without PHP class");
-				ZEND_VM_JMP(opline->op2.jmp_addr);
-			}
-
 			ce = Z_OBJCE_P(array_ptr);
-			if (!ce || ce->get_iterator == NULL) {
+			if (ce->get_iterator == NULL) {
 				Z_ADDREF_P(array_ptr);
 			}
 			array_ref = array_ptr;
@@ -3112,7 +3107,7 @@ static int ZEND_FASTCALL  ZEND_FE_RESET_SPEC_CONST_HANDLER(ZEND_OPCODE_HANDLER_A
 			}
 		} else if (Z_TYPE_P(array_ptr) == IS_OBJECT) {
 			ce = Z_OBJCE_P(array_ptr);
-			if (!ce || !ce->get_iterator) {
+			if (!ce->get_iterator) {
 				if (IS_CONST == IS_CV) {
 					Z_ADDREF_P(array_ref);
 				}
@@ -3426,16 +3421,12 @@ static int ZEND_FASTCALL  ZEND_TYPE_CHECK_SPEC_CONST_HANDLER(ZEND_OPCODE_HANDLER
 			break;
 		case IS_OBJECT:
 			if (Z_TYPE_P(value) == opline->extended_value) {
-				if (Z_OBJ_HT_P(value)->get_class_entry == NULL) {
-					ZVAL_TRUE(EX_VAR(opline->result.var));
+				zend_class_entry *ce = Z_OBJCE_P(value);
+				if (ce->name->len == sizeof("__PHP_Incomplete_Class") - 1
+						&& !strncmp(ce->name->val, "__PHP_Incomplete_Class", ce->name->len)) {
+					ZVAL_FALSE(EX_VAR(opline->result.var));
 				} else {
-					zend_class_entry *ce = Z_OBJCE_P(value);
-					if (ce->name->len == sizeof("__PHP_Incomplete_Class") - 1
-							&& !strncmp(ce->name->val, "__PHP_Incomplete_Class", ce->name->len)) {
-						ZVAL_FALSE(EX_VAR(opline->result.var));
-					} else {
-						ZVAL_TRUE(EX_VAR(opline->result.var));
-					}
+					ZVAL_TRUE(EX_VAR(opline->result.var));
 				}
 			} else {
 				ZVAL_FALSE(EX_VAR(opline->result.var));
@@ -4167,7 +4158,7 @@ static int ZEND_FASTCALL  ZEND_INIT_STATIC_METHOD_CALL_SPEC_CONST_CONST_HANDLER(
 		if (UNEXPECTED(ce->constructor == NULL)) {
 			zend_error_noreturn(E_ERROR, "Cannot call constructor");
 		}
-		if (Z_OBJ(EX(This)) && zend_get_class_entry(Z_OBJ(EX(This)) TSRMLS_CC) != ce->constructor->common.scope && (ce->constructor->common.fn_flags & ZEND_ACC_PRIVATE)) {
+		if (Z_OBJ(EX(This)) && Z_OBJ(EX(This))->ce != ce->constructor->common.scope && (ce->constructor->common.fn_flags & ZEND_ACC_PRIVATE)) {
 			zend_error_noreturn(E_ERROR, "Cannot call private %s::__construct()", ce->name->val);
 		}
 		fbc = ce->constructor;
@@ -4180,8 +4171,7 @@ static int ZEND_FASTCALL  ZEND_INIT_STATIC_METHOD_CALL_SPEC_CONST_CONST_HANDLER(
 			GC_REFCOUNT(object)++;
 		}
 		if (!object ||
-		    (object->handlers->get_class_entry &&
-		     !instanceof_function(zend_get_class_entry(object TSRMLS_CC), ce TSRMLS_CC))) {
+		    !instanceof_function(object->ce, ce TSRMLS_CC)) {
 		    /* We are calling method of the other (incompatible) class,
 		       but passing $this. This is done for compatibility with php-4. */
 			if (fbc->common.fn_flags & ZEND_ACC_ALLOW_STATIC) {
@@ -5490,7 +5480,7 @@ static int ZEND_FASTCALL  ZEND_INIT_STATIC_METHOD_CALL_SPEC_CONST_TMP_HANDLER(ZE
 		if (UNEXPECTED(ce->constructor == NULL)) {
 			zend_error_noreturn(E_ERROR, "Cannot call constructor");
 		}
-		if (Z_OBJ(EX(This)) && zend_get_class_entry(Z_OBJ(EX(This)) TSRMLS_CC) != ce->constructor->common.scope && (ce->constructor->common.fn_flags & ZEND_ACC_PRIVATE)) {
+		if (Z_OBJ(EX(This)) && Z_OBJ(EX(This))->ce != ce->constructor->common.scope && (ce->constructor->common.fn_flags & ZEND_ACC_PRIVATE)) {
 			zend_error_noreturn(E_ERROR, "Cannot call private %s::__construct()", ce->name->val);
 		}
 		fbc = ce->constructor;
@@ -5503,8 +5493,7 @@ static int ZEND_FASTCALL  ZEND_INIT_STATIC_METHOD_CALL_SPEC_CONST_TMP_HANDLER(ZE
 			GC_REFCOUNT(object)++;
 		}
 		if (!object ||
-		    (object->handlers->get_class_entry &&
-		     !instanceof_function(zend_get_class_entry(object TSRMLS_CC), ce TSRMLS_CC))) {
+		    !instanceof_function(object->ce, ce TSRMLS_CC)) {
 		    /* We are calling method of the other (incompatible) class,
 		       but passing $this. This is done for compatibility with php-4. */
 			if (fbc->common.fn_flags & ZEND_ACC_ALLOW_STATIC) {
@@ -6685,7 +6674,7 @@ static int ZEND_FASTCALL  ZEND_INIT_STATIC_METHOD_CALL_SPEC_CONST_VAR_HANDLER(ZE
 		if (UNEXPECTED(ce->constructor == NULL)) {
 			zend_error_noreturn(E_ERROR, "Cannot call constructor");
 		}
-		if (Z_OBJ(EX(This)) && zend_get_class_entry(Z_OBJ(EX(This)) TSRMLS_CC) != ce->constructor->common.scope && (ce->constructor->common.fn_flags & ZEND_ACC_PRIVATE)) {
+		if (Z_OBJ(EX(This)) && Z_OBJ(EX(This))->ce != ce->constructor->common.scope && (ce->constructor->common.fn_flags & ZEND_ACC_PRIVATE)) {
 			zend_error_noreturn(E_ERROR, "Cannot call private %s::__construct()", ce->name->val);
 		}
 		fbc = ce->constructor;
@@ -6698,8 +6687,7 @@ static int ZEND_FASTCALL  ZEND_INIT_STATIC_METHOD_CALL_SPEC_CONST_VAR_HANDLER(ZE
 			GC_REFCOUNT(object)++;
 		}
 		if (!object ||
-		    (object->handlers->get_class_entry &&
-		     !instanceof_function(zend_get_class_entry(object TSRMLS_CC), ce TSRMLS_CC))) {
+		    !instanceof_function(object->ce, ce TSRMLS_CC)) {
 		    /* We are calling method of the other (incompatible) class,
 		       but passing $this. This is done for compatibility with php-4. */
 			if (fbc->common.fn_flags & ZEND_ACC_ALLOW_STATIC) {
@@ -7631,7 +7619,7 @@ static int ZEND_FASTCALL  ZEND_INIT_STATIC_METHOD_CALL_SPEC_CONST_UNUSED_HANDLER
 		if (UNEXPECTED(ce->constructor == NULL)) {
 			zend_error_noreturn(E_ERROR, "Cannot call constructor");
 		}
-		if (Z_OBJ(EX(This)) && zend_get_class_entry(Z_OBJ(EX(This)) TSRMLS_CC) != ce->constructor->common.scope && (ce->constructor->common.fn_flags & ZEND_ACC_PRIVATE)) {
+		if (Z_OBJ(EX(This)) && Z_OBJ(EX(This))->ce != ce->constructor->common.scope && (ce->constructor->common.fn_flags & ZEND_ACC_PRIVATE)) {
 			zend_error_noreturn(E_ERROR, "Cannot call private %s::__construct()", ce->name->val);
 		}
 		fbc = ce->constructor;
@@ -7644,8 +7632,7 @@ static int ZEND_FASTCALL  ZEND_INIT_STATIC_METHOD_CALL_SPEC_CONST_UNUSED_HANDLER
 			GC_REFCOUNT(object)++;
 		}
 		if (!object ||
-		    (object->handlers->get_class_entry &&
-		     !instanceof_function(zend_get_class_entry(object TSRMLS_CC), ce TSRMLS_CC))) {
+		    !instanceof_function(object->ce, ce TSRMLS_CC)) {
 		    /* We are calling method of the other (incompatible) class,
 		       but passing $this. This is done for compatibility with php-4. */
 			if (fbc->common.fn_flags & ZEND_ACC_ALLOW_STATIC) {
@@ -8620,7 +8607,7 @@ static int ZEND_FASTCALL  ZEND_INIT_STATIC_METHOD_CALL_SPEC_CONST_CV_HANDLER(ZEN
 		if (UNEXPECTED(ce->constructor == NULL)) {
 			zend_error_noreturn(E_ERROR, "Cannot call constructor");
 		}
-		if (Z_OBJ(EX(This)) && zend_get_class_entry(Z_OBJ(EX(This)) TSRMLS_CC) != ce->constructor->common.scope && (ce->constructor->common.fn_flags & ZEND_ACC_PRIVATE)) {
+		if (Z_OBJ(EX(This)) && Z_OBJ(EX(This))->ce != ce->constructor->common.scope && (ce->constructor->common.fn_flags & ZEND_ACC_PRIVATE)) {
 			zend_error_noreturn(E_ERROR, "Cannot call private %s::__construct()", ce->name->val);
 		}
 		fbc = ce->constructor;
@@ -8633,8 +8620,7 @@ static int ZEND_FASTCALL  ZEND_INIT_STATIC_METHOD_CALL_SPEC_CONST_CV_HANDLER(ZEN
 			GC_REFCOUNT(object)++;
 		}
 		if (!object ||
-		    (object->handlers->get_class_entry &&
-		     !instanceof_function(zend_get_class_entry(object TSRMLS_CC), ce TSRMLS_CC))) {
+		    !instanceof_function(object->ce, ce TSRMLS_CC)) {
 		    /* We are calling method of the other (incompatible) class,
 		       but passing $this. This is done for compatibility with php-4. */
 			if (fbc->common.fn_flags & ZEND_ACC_ALLOW_STATIC) {
@@ -8745,7 +8731,7 @@ static int ZEND_FASTCALL  ZEND_CATCH_SPEC_CONST_CV_HANDLER(ZEND_OPCODE_HANDLER_A
 
 		CACHE_PTR(Z_CACHE_SLOT_P(opline->op1.zv), catch_ce);
 	}
-	ce = zend_get_class_entry(EG(exception) TSRMLS_CC);
+	ce = EG(exception)->ce;
 
 #ifdef HAVE_DTRACE
 	if (DTRACE_EXCEPTION_CAUGHT_ENABLED()) {
@@ -9913,13 +9899,8 @@ static int ZEND_FASTCALL  ZEND_FE_RESET_SPEC_TMP_HANDLER(ZEND_OPCODE_HANDLER_ARG
 			}
 			if (Z_REFCOUNTED_P(array_ref)) Z_ADDREF_P(array_ref);
 		} else if (Z_TYPE_P(array_ptr) == IS_OBJECT) {
-			if(Z_OBJ_HT_P(array_ptr)->get_class_entry == NULL) {
-				zend_error(E_WARNING, "foreach() cannot iterate over objects without PHP class");
-				ZEND_VM_JMP(opline->op2.jmp_addr);
-			}
-
 			ce = Z_OBJCE_P(array_ptr);
-			if (!ce || ce->get_iterator == NULL) {
+			if (ce->get_iterator == NULL) {
 				Z_ADDREF_P(array_ptr);
 			}
 			array_ref = array_ptr;
@@ -9943,7 +9924,7 @@ static int ZEND_FASTCALL  ZEND_FE_RESET_SPEC_TMP_HANDLER(ZEND_OPCODE_HANDLER_ARG
 			}
 		} else if (Z_TYPE_P(array_ptr) == IS_OBJECT) {
 			ce = Z_OBJCE_P(array_ptr);
-			if (!ce || !ce->get_iterator) {
+			if (!ce->get_iterator) {
 				if (IS_TMP_VAR == IS_CV) {
 					Z_ADDREF_P(array_ref);
 				}
@@ -10222,7 +10203,7 @@ static int ZEND_FASTCALL  ZEND_INSTANCEOF_SPEC_TMP_HANDLER(ZEND_OPCODE_HANDLER_A
 	SAVE_OPLINE();
 	expr = _get_zval_ptr_tmp(opline->op1.var, execute_data, &free_op1 TSRMLS_CC);
 
-	if (Z_TYPE_P(expr) == IS_OBJECT && Z_OBJ_HT_P(expr)->get_class_entry) {
+	if (Z_TYPE_P(expr) == IS_OBJECT) {
 		result = instanceof_function(Z_OBJCE_P(expr), Z_CE_P(EX_VAR(opline->op2.var)) TSRMLS_CC);
 	} else {
 		result = 0;
@@ -10294,16 +10275,12 @@ static int ZEND_FASTCALL  ZEND_TYPE_CHECK_SPEC_TMP_HANDLER(ZEND_OPCODE_HANDLER_A
 			break;
 		case IS_OBJECT:
 			if (Z_TYPE_P(value) == opline->extended_value) {
-				if (Z_OBJ_HT_P(value)->get_class_entry == NULL) {
-					ZVAL_TRUE(EX_VAR(opline->result.var));
+				zend_class_entry *ce = Z_OBJCE_P(value);
+				if (ce->name->len == sizeof("__PHP_Incomplete_Class") - 1
+						&& !strncmp(ce->name->val, "__PHP_Incomplete_Class", ce->name->len)) {
+					ZVAL_FALSE(EX_VAR(opline->result.var));
 				} else {
-					zend_class_entry *ce = Z_OBJCE_P(value);
-					if (ce->name->len == sizeof("__PHP_Incomplete_Class") - 1
-							&& !strncmp(ce->name->val, "__PHP_Incomplete_Class", ce->name->len)) {
-						ZVAL_FALSE(EX_VAR(opline->result.var));
-					} else {
-						ZVAL_TRUE(EX_VAR(opline->result.var));
-					}
+					ZVAL_TRUE(EX_VAR(opline->result.var));
 				}
 			} else {
 				ZVAL_FALSE(EX_VAR(opline->result.var));
@@ -11051,7 +11028,7 @@ static int ZEND_FASTCALL  ZEND_INIT_METHOD_CALL_SPEC_TMP_CONST_HANDLER(ZEND_OPCO
 	}
 
 	obj = Z_OBJ_P(object);
-	called_scope = zend_get_class_entry(obj TSRMLS_CC);
+	called_scope = obj->ce;
 
 	if (IS_CONST != IS_CONST ||
 	    (fbc = CACHED_POLYMORPHIC_PTR(Z_CACHE_SLOT_P(function_name), called_scope)) == NULL) {
@@ -12217,7 +12194,7 @@ static int ZEND_FASTCALL  ZEND_INIT_METHOD_CALL_SPEC_TMP_TMP_HANDLER(ZEND_OPCODE
 	}
 
 	obj = Z_OBJ_P(object);
-	called_scope = zend_get_class_entry(obj TSRMLS_CC);
+	called_scope = obj->ce;
 
 	if (IS_TMP_VAR != IS_CONST ||
 	    (fbc = CACHED_POLYMORPHIC_PTR(Z_CACHE_SLOT_P(function_name), called_scope)) == NULL) {
@@ -13384,7 +13361,7 @@ static int ZEND_FASTCALL  ZEND_INIT_METHOD_CALL_SPEC_TMP_VAR_HANDLER(ZEND_OPCODE
 	}
 
 	obj = Z_OBJ_P(object);
-	called_scope = zend_get_class_entry(obj TSRMLS_CC);
+	called_scope = obj->ce;
 
 	if (IS_VAR != IS_CONST ||
 	    (fbc = CACHED_POLYMORPHIC_PTR(Z_CACHE_SLOT_P(function_name), called_scope)) == NULL) {
@@ -15140,7 +15117,7 @@ static int ZEND_FASTCALL  ZEND_INIT_METHOD_CALL_SPEC_TMP_CV_HANDLER(ZEND_OPCODE_
 	}
 
 	obj = Z_OBJ_P(object);
-	called_scope = zend_get_class_entry(obj TSRMLS_CC);
+	called_scope = obj->ce;
 
 	if (IS_CV != IS_CONST ||
 	    (fbc = CACHED_POLYMORPHIC_PTR(Z_CACHE_SLOT_P(function_name), called_scope)) == NULL) {
@@ -16644,13 +16621,8 @@ static int ZEND_FASTCALL  ZEND_FE_RESET_SPEC_VAR_HANDLER(ZEND_OPCODE_HANDLER_ARG
 			}
 			if (Z_REFCOUNTED_P(array_ref)) Z_ADDREF_P(array_ref);
 		} else if (Z_TYPE_P(array_ptr) == IS_OBJECT) {
-			if(Z_OBJ_HT_P(array_ptr)->get_class_entry == NULL) {
-				zend_error(E_WARNING, "foreach() cannot iterate over objects without PHP class");
-				ZEND_VM_JMP(opline->op2.jmp_addr);
-			}
-
 			ce = Z_OBJCE_P(array_ptr);
-			if (!ce || ce->get_iterator == NULL) {
+			if (ce->get_iterator == NULL) {
 				Z_ADDREF_P(array_ptr);
 			}
 			array_ref = array_ptr;
@@ -16674,7 +16646,7 @@ static int ZEND_FASTCALL  ZEND_FE_RESET_SPEC_VAR_HANDLER(ZEND_OPCODE_HANDLER_ARG
 			}
 		} else if (Z_TYPE_P(array_ptr) == IS_OBJECT) {
 			ce = Z_OBJCE_P(array_ptr);
-			if (!ce || !ce->get_iterator) {
+			if (!ce->get_iterator) {
 				if (IS_VAR == IS_CV) {
 					Z_ADDREF_P(array_ref);
 				}
@@ -17181,7 +17153,7 @@ static int ZEND_FASTCALL  ZEND_INSTANCEOF_SPEC_VAR_HANDLER(ZEND_OPCODE_HANDLER_A
 	SAVE_OPLINE();
 	expr = _get_zval_ptr_var_deref(opline->op1.var, execute_data, &free_op1 TSRMLS_CC);
 
-	if (Z_TYPE_P(expr) == IS_OBJECT && Z_OBJ_HT_P(expr)->get_class_entry) {
+	if (Z_TYPE_P(expr) == IS_OBJECT) {
 		result = instanceof_function(Z_OBJCE_P(expr), Z_CE_P(EX_VAR(opline->op2.var)) TSRMLS_CC);
 	} else {
 		result = 0;
@@ -17253,16 +17225,12 @@ static int ZEND_FASTCALL  ZEND_TYPE_CHECK_SPEC_VAR_HANDLER(ZEND_OPCODE_HANDLER_A
 			break;
 		case IS_OBJECT:
 			if (Z_TYPE_P(value) == opline->extended_value) {
-				if (Z_OBJ_HT_P(value)->get_class_entry == NULL) {
-					ZVAL_TRUE(EX_VAR(opline->result.var));
+				zend_class_entry *ce = Z_OBJCE_P(value);
+				if (ce->name->len == sizeof("__PHP_Incomplete_Class") - 1
+						&& !strncmp(ce->name->val, "__PHP_Incomplete_Class", ce->name->len)) {
+					ZVAL_FALSE(EX_VAR(opline->result.var));
 				} else {
-					zend_class_entry *ce = Z_OBJCE_P(value);
-					if (ce->name->len == sizeof("__PHP_Incomplete_Class") - 1
-							&& !strncmp(ce->name->val, "__PHP_Incomplete_Class", ce->name->len)) {
-						ZVAL_FALSE(EX_VAR(opline->result.var));
-					} else {
-						ZVAL_TRUE(EX_VAR(opline->result.var));
-					}
+					ZVAL_TRUE(EX_VAR(opline->result.var));
 				}
 			} else {
 				ZVAL_FALSE(EX_VAR(opline->result.var));
@@ -17589,7 +17557,8 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_VAR_CONST(int (*b
 			&& Z_OBJ_HT_P(object)->get_property_ptr_ptr) {
 			zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_CONST == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 			if (zptr != NULL) { 			/* NULL means no success in getting PTR */
-				SEPARATE_ZVAL_IF_NOT_REF(zptr);
+				ZVAL_DEREF(zptr);
+				SEPARATE_ZVAL_NOREF(zptr);
 
 				have_get_ptr = 1;
 				binary_op(zptr, zptr, value TSRMLS_CC);
@@ -18758,7 +18727,7 @@ static int ZEND_FASTCALL  ZEND_INIT_METHOD_CALL_SPEC_VAR_CONST_HANDLER(ZEND_OPCO
 	}
 
 	obj = Z_OBJ_P(object);
-	called_scope = zend_get_class_entry(obj TSRMLS_CC);
+	called_scope = obj->ce;
 
 	if (IS_CONST != IS_CONST ||
 	    (fbc = CACHED_POLYMORPHIC_PTR(Z_CACHE_SLOT_P(function_name), called_scope)) == NULL) {
@@ -18869,7 +18838,7 @@ static int ZEND_FASTCALL  ZEND_INIT_STATIC_METHOD_CALL_SPEC_VAR_CONST_HANDLER(ZE
 		if (UNEXPECTED(ce->constructor == NULL)) {
 			zend_error_noreturn(E_ERROR, "Cannot call constructor");
 		}
-		if (Z_OBJ(EX(This)) && zend_get_class_entry(Z_OBJ(EX(This)) TSRMLS_CC) != ce->constructor->common.scope && (ce->constructor->common.fn_flags & ZEND_ACC_PRIVATE)) {
+		if (Z_OBJ(EX(This)) && Z_OBJ(EX(This))->ce != ce->constructor->common.scope && (ce->constructor->common.fn_flags & ZEND_ACC_PRIVATE)) {
 			zend_error_noreturn(E_ERROR, "Cannot call private %s::__construct()", ce->name->val);
 		}
 		fbc = ce->constructor;
@@ -18882,8 +18851,7 @@ static int ZEND_FASTCALL  ZEND_INIT_STATIC_METHOD_CALL_SPEC_VAR_CONST_HANDLER(ZE
 			GC_REFCOUNT(object)++;
 		}
 		if (!object ||
-		    (object->handlers->get_class_entry &&
-		     !instanceof_function(zend_get_class_entry(object TSRMLS_CC), ce TSRMLS_CC))) {
+		    !instanceof_function(object->ce, ce TSRMLS_CC)) {
 		    /* We are calling method of the other (incompatible) class,
 		       but passing $this. This is done for compatibility with php-4. */
 			if (fbc->common.fn_flags & ZEND_ACC_ALLOW_STATIC) {
@@ -20025,7 +19993,8 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_VAR_TMP(int (*bin
 			&& Z_OBJ_HT_P(object)->get_property_ptr_ptr) {
 			zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_TMP_VAR == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 			if (zptr != NULL) { 			/* NULL means no success in getting PTR */
-				SEPARATE_ZVAL_IF_NOT_REF(zptr);
+				ZVAL_DEREF(zptr);
+				SEPARATE_ZVAL_NOREF(zptr);
 
 				have_get_ptr = 1;
 				binary_op(zptr, zptr, value TSRMLS_CC);
@@ -21015,7 +20984,7 @@ static int ZEND_FASTCALL  ZEND_INIT_METHOD_CALL_SPEC_VAR_TMP_HANDLER(ZEND_OPCODE
 	}
 
 	obj = Z_OBJ_P(object);
-	called_scope = zend_get_class_entry(obj TSRMLS_CC);
+	called_scope = obj->ce;
 
 	if (IS_TMP_VAR != IS_CONST ||
 	    (fbc = CACHED_POLYMORPHIC_PTR(Z_CACHE_SLOT_P(function_name), called_scope)) == NULL) {
@@ -21127,7 +21096,7 @@ static int ZEND_FASTCALL  ZEND_INIT_STATIC_METHOD_CALL_SPEC_VAR_TMP_HANDLER(ZEND
 		if (UNEXPECTED(ce->constructor == NULL)) {
 			zend_error_noreturn(E_ERROR, "Cannot call constructor");
 		}
-		if (Z_OBJ(EX(This)) && zend_get_class_entry(Z_OBJ(EX(This)) TSRMLS_CC) != ce->constructor->common.scope && (ce->constructor->common.fn_flags & ZEND_ACC_PRIVATE)) {
+		if (Z_OBJ(EX(This)) && Z_OBJ(EX(This))->ce != ce->constructor->common.scope && (ce->constructor->common.fn_flags & ZEND_ACC_PRIVATE)) {
 			zend_error_noreturn(E_ERROR, "Cannot call private %s::__construct()", ce->name->val);
 		}
 		fbc = ce->constructor;
@@ -21140,8 +21109,7 @@ static int ZEND_FASTCALL  ZEND_INIT_STATIC_METHOD_CALL_SPEC_VAR_TMP_HANDLER(ZEND
 			GC_REFCOUNT(object)++;
 		}
 		if (!object ||
-		    (object->handlers->get_class_entry &&
-		     !instanceof_function(zend_get_class_entry(object TSRMLS_CC), ce TSRMLS_CC))) {
+		    !instanceof_function(object->ce, ce TSRMLS_CC)) {
 		    /* We are calling method of the other (incompatible) class,
 		       but passing $this. This is done for compatibility with php-4. */
 			if (fbc->common.fn_flags & ZEND_ACC_ALLOW_STATIC) {
@@ -22036,7 +22004,8 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_VAR_VAR(int (*bin
 			&& Z_OBJ_HT_P(object)->get_property_ptr_ptr) {
 			zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_VAR == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 			if (zptr != NULL) { 			/* NULL means no success in getting PTR */
-				SEPARATE_ZVAL_IF_NOT_REF(zptr);
+				ZVAL_DEREF(zptr);
+				SEPARATE_ZVAL_NOREF(zptr);
 
 				have_get_ptr = 1;
 				binary_op(zptr, zptr, value TSRMLS_CC);
@@ -23241,7 +23210,7 @@ static int ZEND_FASTCALL  ZEND_INIT_METHOD_CALL_SPEC_VAR_VAR_HANDLER(ZEND_OPCODE
 	}
 
 	obj = Z_OBJ_P(object);
-	called_scope = zend_get_class_entry(obj TSRMLS_CC);
+	called_scope = obj->ce;
 
 	if (IS_VAR != IS_CONST ||
 	    (fbc = CACHED_POLYMORPHIC_PTR(Z_CACHE_SLOT_P(function_name), called_scope)) == NULL) {
@@ -23353,7 +23322,7 @@ static int ZEND_FASTCALL  ZEND_INIT_STATIC_METHOD_CALL_SPEC_VAR_VAR_HANDLER(ZEND
 		if (UNEXPECTED(ce->constructor == NULL)) {
 			zend_error_noreturn(E_ERROR, "Cannot call constructor");
 		}
-		if (Z_OBJ(EX(This)) && zend_get_class_entry(Z_OBJ(EX(This)) TSRMLS_CC) != ce->constructor->common.scope && (ce->constructor->common.fn_flags & ZEND_ACC_PRIVATE)) {
+		if (Z_OBJ(EX(This)) && Z_OBJ(EX(This))->ce != ce->constructor->common.scope && (ce->constructor->common.fn_flags & ZEND_ACC_PRIVATE)) {
 			zend_error_noreturn(E_ERROR, "Cannot call private %s::__construct()", ce->name->val);
 		}
 		fbc = ce->constructor;
@@ -23366,8 +23335,7 @@ static int ZEND_FASTCALL  ZEND_INIT_STATIC_METHOD_CALL_SPEC_VAR_VAR_HANDLER(ZEND
 			GC_REFCOUNT(object)++;
 		}
 		if (!object ||
-		    (object->handlers->get_class_entry &&
-		     !instanceof_function(zend_get_class_entry(object TSRMLS_CC), ce TSRMLS_CC))) {
+		    !instanceof_function(object->ce, ce TSRMLS_CC)) {
 		    /* We are calling method of the other (incompatible) class,
 		       but passing $this. This is done for compatibility with php-4. */
 			if (fbc->common.fn_flags & ZEND_ACC_ALLOW_STATIC) {
@@ -24141,7 +24109,8 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_VAR_UNUSED(int (*
 			&& Z_OBJ_HT_P(object)->get_property_ptr_ptr) {
 			zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_UNUSED == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 			if (zptr != NULL) { 			/* NULL means no success in getting PTR */
-				SEPARATE_ZVAL_IF_NOT_REF(zptr);
+				ZVAL_DEREF(zptr);
+				SEPARATE_ZVAL_NOREF(zptr);
 
 				have_get_ptr = 1;
 				binary_op(zptr, zptr, value TSRMLS_CC);
@@ -24827,7 +24796,7 @@ static int ZEND_FASTCALL  ZEND_INIT_STATIC_METHOD_CALL_SPEC_VAR_UNUSED_HANDLER(Z
 		if (UNEXPECTED(ce->constructor == NULL)) {
 			zend_error_noreturn(E_ERROR, "Cannot call constructor");
 		}
-		if (Z_OBJ(EX(This)) && zend_get_class_entry(Z_OBJ(EX(This)) TSRMLS_CC) != ce->constructor->common.scope && (ce->constructor->common.fn_flags & ZEND_ACC_PRIVATE)) {
+		if (Z_OBJ(EX(This)) && Z_OBJ(EX(This))->ce != ce->constructor->common.scope && (ce->constructor->common.fn_flags & ZEND_ACC_PRIVATE)) {
 			zend_error_noreturn(E_ERROR, "Cannot call private %s::__construct()", ce->name->val);
 		}
 		fbc = ce->constructor;
@@ -24840,8 +24809,7 @@ static int ZEND_FASTCALL  ZEND_INIT_STATIC_METHOD_CALL_SPEC_VAR_UNUSED_HANDLER(Z
 			GC_REFCOUNT(object)++;
 		}
 		if (!object ||
-		    (object->handlers->get_class_entry &&
-		     !instanceof_function(zend_get_class_entry(object TSRMLS_CC), ce TSRMLS_CC))) {
+		    !instanceof_function(object->ce, ce TSRMLS_CC)) {
 		    /* We are calling method of the other (incompatible) class,
 		       but passing $this. This is done for compatibility with php-4. */
 			if (fbc->common.fn_flags & ZEND_ACC_ALLOW_STATIC) {
@@ -25612,7 +25580,8 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_VAR_CV(int (*bina
 			&& Z_OBJ_HT_P(object)->get_property_ptr_ptr) {
 			zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_CV == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 			if (zptr != NULL) { 			/* NULL means no success in getting PTR */
-				SEPARATE_ZVAL_IF_NOT_REF(zptr);
+				ZVAL_DEREF(zptr);
+				SEPARATE_ZVAL_NOREF(zptr);
 
 				have_get_ptr = 1;
 				binary_op(zptr, zptr, value TSRMLS_CC);
@@ -26659,7 +26628,7 @@ static int ZEND_FASTCALL  ZEND_INIT_METHOD_CALL_SPEC_VAR_CV_HANDLER(ZEND_OPCODE_
 	}
 
 	obj = Z_OBJ_P(object);
-	called_scope = zend_get_class_entry(obj TSRMLS_CC);
+	called_scope = obj->ce;
 
 	if (IS_CV != IS_CONST ||
 	    (fbc = CACHED_POLYMORPHIC_PTR(Z_CACHE_SLOT_P(function_name), called_scope)) == NULL) {
@@ -26770,7 +26739,7 @@ static int ZEND_FASTCALL  ZEND_INIT_STATIC_METHOD_CALL_SPEC_VAR_CV_HANDLER(ZEND_
 		if (UNEXPECTED(ce->constructor == NULL)) {
 			zend_error_noreturn(E_ERROR, "Cannot call constructor");
 		}
-		if (Z_OBJ(EX(This)) && zend_get_class_entry(Z_OBJ(EX(This)) TSRMLS_CC) != ce->constructor->common.scope && (ce->constructor->common.fn_flags & ZEND_ACC_PRIVATE)) {
+		if (Z_OBJ(EX(This)) && Z_OBJ(EX(This))->ce != ce->constructor->common.scope && (ce->constructor->common.fn_flags & ZEND_ACC_PRIVATE)) {
 			zend_error_noreturn(E_ERROR, "Cannot call private %s::__construct()", ce->name->val);
 		}
 		fbc = ce->constructor;
@@ -26783,8 +26752,7 @@ static int ZEND_FASTCALL  ZEND_INIT_STATIC_METHOD_CALL_SPEC_VAR_CV_HANDLER(ZEND_
 			GC_REFCOUNT(object)++;
 		}
 		if (!object ||
-		    (object->handlers->get_class_entry &&
-		     !instanceof_function(zend_get_class_entry(object TSRMLS_CC), ce TSRMLS_CC))) {
+		    !instanceof_function(object->ce, ce TSRMLS_CC)) {
 		    /* We are calling method of the other (incompatible) class,
 		       but passing $this. This is done for compatibility with php-4. */
 			if (fbc->common.fn_flags & ZEND_ACC_ALLOW_STATIC) {
@@ -27481,7 +27449,8 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_UNUSED_CONST(int 
 			&& Z_OBJ_HT_P(object)->get_property_ptr_ptr) {
 			zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_CONST == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 			if (zptr != NULL) { 			/* NULL means no success in getting PTR */
-				SEPARATE_ZVAL_IF_NOT_REF(zptr);
+				ZVAL_DEREF(zptr);
+				SEPARATE_ZVAL_NOREF(zptr);
 
 				have_get_ptr = 1;
 				binary_op(zptr, zptr, value TSRMLS_CC);
@@ -28276,7 +28245,7 @@ static int ZEND_FASTCALL  ZEND_INIT_METHOD_CALL_SPEC_UNUSED_CONST_HANDLER(ZEND_O
 	}
 
 	obj = Z_OBJ_P(object);
-	called_scope = zend_get_class_entry(obj TSRMLS_CC);
+	called_scope = obj->ce;
 
 	if (IS_CONST != IS_CONST ||
 	    (fbc = CACHED_POLYMORPHIC_PTR(Z_CACHE_SLOT_P(function_name), called_scope)) == NULL) {
@@ -28869,7 +28838,8 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_UNUSED_TMP(int (*
 			&& Z_OBJ_HT_P(object)->get_property_ptr_ptr) {
 			zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_TMP_VAR == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 			if (zptr != NULL) { 			/* NULL means no success in getting PTR */
-				SEPARATE_ZVAL_IF_NOT_REF(zptr);
+				ZVAL_DEREF(zptr);
+				SEPARATE_ZVAL_NOREF(zptr);
 
 				have_get_ptr = 1;
 				binary_op(zptr, zptr, value TSRMLS_CC);
@@ -29675,7 +29645,7 @@ static int ZEND_FASTCALL  ZEND_INIT_METHOD_CALL_SPEC_UNUSED_TMP_HANDLER(ZEND_OPC
 	}
 
 	obj = Z_OBJ_P(object);
-	called_scope = zend_get_class_entry(obj TSRMLS_CC);
+	called_scope = obj->ce;
 
 	if (IS_TMP_VAR != IS_CONST ||
 	    (fbc = CACHED_POLYMORPHIC_PTR(Z_CACHE_SLOT_P(function_name), called_scope)) == NULL) {
@@ -30175,7 +30145,8 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_UNUSED_VAR(int (*
 			&& Z_OBJ_HT_P(object)->get_property_ptr_ptr) {
 			zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_VAR == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 			if (zptr != NULL) { 			/* NULL means no success in getting PTR */
-				SEPARATE_ZVAL_IF_NOT_REF(zptr);
+				ZVAL_DEREF(zptr);
+				SEPARATE_ZVAL_NOREF(zptr);
 
 				have_get_ptr = 1;
 				binary_op(zptr, zptr, value TSRMLS_CC);
@@ -30981,7 +30952,7 @@ static int ZEND_FASTCALL  ZEND_INIT_METHOD_CALL_SPEC_UNUSED_VAR_HANDLER(ZEND_OPC
 	}
 
 	obj = Z_OBJ_P(object);
-	called_scope = zend_get_class_entry(obj TSRMLS_CC);
+	called_scope = obj->ce;
 
 	if (IS_VAR != IS_CONST ||
 	    (fbc = CACHED_POLYMORPHIC_PTR(Z_CACHE_SLOT_P(function_name), called_scope)) == NULL) {
@@ -31481,7 +31452,8 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_UNUSED_UNUSED(int
 			&& Z_OBJ_HT_P(object)->get_property_ptr_ptr) {
 			zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_UNUSED == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 			if (zptr != NULL) { 			/* NULL means no success in getting PTR */
-				SEPARATE_ZVAL_IF_NOT_REF(zptr);
+				ZVAL_DEREF(zptr);
+				SEPARATE_ZVAL_NOREF(zptr);
 
 				have_get_ptr = 1;
 				binary_op(zptr, zptr, value TSRMLS_CC);
@@ -31997,7 +31969,8 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_UNUSED_CV(int (*b
 			&& Z_OBJ_HT_P(object)->get_property_ptr_ptr) {
 			zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_CV == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 			if (zptr != NULL) { 			/* NULL means no success in getting PTR */
-				SEPARATE_ZVAL_IF_NOT_REF(zptr);
+				ZVAL_DEREF(zptr);
+				SEPARATE_ZVAL_NOREF(zptr);
 
 				have_get_ptr = 1;
 				binary_op(zptr, zptr, value TSRMLS_CC);
@@ -32797,7 +32770,7 @@ static int ZEND_FASTCALL  ZEND_INIT_METHOD_CALL_SPEC_UNUSED_CV_HANDLER(ZEND_OPCO
 	}
 
 	obj = Z_OBJ_P(object);
-	called_scope = zend_get_class_entry(obj TSRMLS_CC);
+	called_scope = obj->ce;
 
 	if (IS_CV != IS_CONST ||
 	    (fbc = CACHED_POLYMORPHIC_PTR(Z_CACHE_SLOT_P(function_name), called_scope)) == NULL) {
@@ -34284,13 +34257,8 @@ static int ZEND_FASTCALL  ZEND_FE_RESET_SPEC_CV_HANDLER(ZEND_OPCODE_HANDLER_ARGS
 			}
 			if (Z_REFCOUNTED_P(array_ref)) Z_ADDREF_P(array_ref);
 		} else if (Z_TYPE_P(array_ptr) == IS_OBJECT) {
-			if(Z_OBJ_HT_P(array_ptr)->get_class_entry == NULL) {
-				zend_error(E_WARNING, "foreach() cannot iterate over objects without PHP class");
-				ZEND_VM_JMP(opline->op2.jmp_addr);
-			}
-
 			ce = Z_OBJCE_P(array_ptr);
-			if (!ce || ce->get_iterator == NULL) {
+			if (ce->get_iterator == NULL) {
 				Z_ADDREF_P(array_ptr);
 			}
 			array_ref = array_ptr;
@@ -34314,7 +34282,7 @@ static int ZEND_FASTCALL  ZEND_FE_RESET_SPEC_CV_HANDLER(ZEND_OPCODE_HANDLER_ARGS
 			}
 		} else if (Z_TYPE_P(array_ptr) == IS_OBJECT) {
 			ce = Z_OBJCE_P(array_ptr);
-			if (!ce || !ce->get_iterator) {
+			if (!ce->get_iterator) {
 				if (IS_CV == IS_CV) {
 					Z_ADDREF_P(array_ref);
 				}
@@ -34577,7 +34545,7 @@ static int ZEND_FASTCALL  ZEND_INSTANCEOF_SPEC_CV_HANDLER(ZEND_OPCODE_HANDLER_AR
 	SAVE_OPLINE();
 	expr = _get_zval_ptr_cv_deref_BP_VAR_R(execute_data, opline->op1.var TSRMLS_CC);
 
-	if (Z_TYPE_P(expr) == IS_OBJECT && Z_OBJ_HT_P(expr)->get_class_entry) {
+	if (Z_TYPE_P(expr) == IS_OBJECT) {
 		result = instanceof_function(Z_OBJCE_P(expr), Z_CE_P(EX_VAR(opline->op2.var)) TSRMLS_CC);
 	} else {
 		result = 0;
@@ -34649,16 +34617,12 @@ static int ZEND_FASTCALL  ZEND_TYPE_CHECK_SPEC_CV_HANDLER(ZEND_OPCODE_HANDLER_AR
 			break;
 		case IS_OBJECT:
 			if (Z_TYPE_P(value) == opline->extended_value) {
-				if (Z_OBJ_HT_P(value)->get_class_entry == NULL) {
-					ZVAL_TRUE(EX_VAR(opline->result.var));
+				zend_class_entry *ce = Z_OBJCE_P(value);
+				if (ce->name->len == sizeof("__PHP_Incomplete_Class") - 1
+						&& !strncmp(ce->name->val, "__PHP_Incomplete_Class", ce->name->len)) {
+					ZVAL_FALSE(EX_VAR(opline->result.var));
 				} else {
-					zend_class_entry *ce = Z_OBJCE_P(value);
-					if (ce->name->len == sizeof("__PHP_Incomplete_Class") - 1
-							&& !strncmp(ce->name->val, "__PHP_Incomplete_Class", ce->name->len)) {
-						ZVAL_FALSE(EX_VAR(opline->result.var));
-					} else {
-						ZVAL_TRUE(EX_VAR(opline->result.var));
-					}
+					ZVAL_TRUE(EX_VAR(opline->result.var));
 				}
 			} else {
 				ZVAL_FALSE(EX_VAR(opline->result.var));
@@ -34985,7 +34949,8 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_CV_CONST(int (*bi
 			&& Z_OBJ_HT_P(object)->get_property_ptr_ptr) {
 			zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_CONST == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 			if (zptr != NULL) { 			/* NULL means no success in getting PTR */
-				SEPARATE_ZVAL_IF_NOT_REF(zptr);
+				ZVAL_DEREF(zptr);
+				SEPARATE_ZVAL_NOREF(zptr);
 
 				have_get_ptr = 1;
 				binary_op(zptr, zptr, value TSRMLS_CC);
@@ -36152,7 +36117,7 @@ static int ZEND_FASTCALL  ZEND_INIT_METHOD_CALL_SPEC_CV_CONST_HANDLER(ZEND_OPCOD
 	}
 
 	obj = Z_OBJ_P(object);
-	called_scope = zend_get_class_entry(obj TSRMLS_CC);
+	called_scope = obj->ce;
 
 	if (IS_CONST != IS_CONST ||
 	    (fbc = CACHED_POLYMORPHIC_PTR(Z_CACHE_SLOT_P(function_name), called_scope)) == NULL) {
@@ -37253,7 +37218,8 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_CV_TMP(int (*bina
 			&& Z_OBJ_HT_P(object)->get_property_ptr_ptr) {
 			zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_TMP_VAR == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 			if (zptr != NULL) { 			/* NULL means no success in getting PTR */
-				SEPARATE_ZVAL_IF_NOT_REF(zptr);
+				ZVAL_DEREF(zptr);
+				SEPARATE_ZVAL_NOREF(zptr);
 
 				have_get_ptr = 1;
 				binary_op(zptr, zptr, value TSRMLS_CC);
@@ -38241,7 +38207,7 @@ static int ZEND_FASTCALL  ZEND_INIT_METHOD_CALL_SPEC_CV_TMP_HANDLER(ZEND_OPCODE_
 	}
 
 	obj = Z_OBJ_P(object);
-	called_scope = zend_get_class_entry(obj TSRMLS_CC);
+	called_scope = obj->ce;
 
 	if (IS_TMP_VAR != IS_CONST ||
 	    (fbc = CACHED_POLYMORPHIC_PTR(Z_CACHE_SLOT_P(function_name), called_scope)) == NULL) {
@@ -39135,7 +39101,8 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_CV_VAR(int (*bina
 			&& Z_OBJ_HT_P(object)->get_property_ptr_ptr) {
 			zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_VAR == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 			if (zptr != NULL) { 			/* NULL means no success in getting PTR */
-				SEPARATE_ZVAL_IF_NOT_REF(zptr);
+				ZVAL_DEREF(zptr);
+				SEPARATE_ZVAL_NOREF(zptr);
 
 				have_get_ptr = 1;
 				binary_op(zptr, zptr, value TSRMLS_CC);
@@ -40337,7 +40304,7 @@ static int ZEND_FASTCALL  ZEND_INIT_METHOD_CALL_SPEC_CV_VAR_HANDLER(ZEND_OPCODE_
 	}
 
 	obj = Z_OBJ_P(object);
-	called_scope = zend_get_class_entry(obj TSRMLS_CC);
+	called_scope = obj->ce;
 
 	if (IS_VAR != IS_CONST ||
 	    (fbc = CACHED_POLYMORPHIC_PTR(Z_CACHE_SLOT_P(function_name), called_scope)) == NULL) {
@@ -41110,7 +41077,8 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_CV_UNUSED(int (*b
 			&& Z_OBJ_HT_P(object)->get_property_ptr_ptr) {
 			zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_UNUSED == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 			if (zptr != NULL) { 			/* NULL means no success in getting PTR */
-				SEPARATE_ZVAL_IF_NOT_REF(zptr);
+				ZVAL_DEREF(zptr);
+				SEPARATE_ZVAL_NOREF(zptr);
 
 				have_get_ptr = 1;
 				binary_op(zptr, zptr, value TSRMLS_CC);
@@ -42436,7 +42404,8 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_CV_CV(int (*binar
 			&& Z_OBJ_HT_P(object)->get_property_ptr_ptr) {
 			zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_CV == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 			if (zptr != NULL) { 			/* NULL means no success in getting PTR */
-				SEPARATE_ZVAL_IF_NOT_REF(zptr);
+				ZVAL_DEREF(zptr);
+				SEPARATE_ZVAL_NOREF(zptr);
 
 				have_get_ptr = 1;
 				binary_op(zptr, zptr, value TSRMLS_CC);
@@ -43480,7 +43449,7 @@ static int ZEND_FASTCALL  ZEND_INIT_METHOD_CALL_SPEC_CV_CV_HANDLER(ZEND_OPCODE_H
 	}
 
 	obj = Z_OBJ_P(object);
-	called_scope = zend_get_class_entry(obj TSRMLS_CC);
+	called_scope = obj->ce;
 
 	if (IS_CV != IS_CONST ||
 	    (fbc = CACHED_POLYMORPHIC_PTR(Z_CACHE_SLOT_P(function_name), called_scope)) == NULL) {

@@ -276,7 +276,9 @@ typedef struct _zend_llvm_ctx {
 	GlobalVariable  *_CG_one_char_string;
 	GlobalVariable  *_CG_arena;
 	GlobalVariable  *_EG_exception;
-	GlobalVariable  *_EG_argument_stack;
+	GlobalVariable  *_EG_vm_stack_top;
+	GlobalVariable  *_EG_vm_stack_end;
+	GlobalVariable  *_EG_vm_stack;
 	GlobalVariable  *_EG_objects_store;
 	GlobalVariable  *_EG_uninitialized_zval;
 	GlobalVariable  *_EG_error_zval;
@@ -346,7 +348,9 @@ typedef struct _zend_llvm_ctx {
 		_CG_one_char_string = NULL;
 		_CG_arena = NULL;
 		_EG_exception = NULL;
-		_EG_argument_stack = NULL;
+		_EG_vm_stack_top = NULL;
+		_EG_vm_stack_end = NULL;
+		_EG_vm_stack = NULL;
 		_EG_objects_store = NULL;
 		_EG_uninitialized_zval = NULL;
 		_EG_error_zval = NULL;
@@ -10837,100 +10841,23 @@ static int zend_jit_assign_dim(zend_llvm_ctx     &llvm_ctx,
 
 /* PUBLIC API */
 
-/* {{{ zend_jit_vm_stack_new_page */
-static Value* zend_jit_vm_stack_new_page(zend_llvm_ctx    &llvm_ctx,
-                                         Value            *size,
-                                         Value            *prev,
-                                         uint32_t          lineno)
-{
-	//JIT: zend_vm_stack page = (zend_vm_stack)emalloc(size);
-	Value *page = zend_jit_emalloc(llvm_ctx, size, lineno);
-	//JIT: page->top = ZEND_VM_STACK_ELEMETS(page);
-	llvm_ctx.builder.CreateAlignedStore(
-		llvm_ctx.builder.CreateAdd(
-			llvm_ctx.builder.CreatePtrToInt(
-				page,
-				LLVM_GET_LONG_TY(llvm_ctx.context)),
-			LLVM_GET_LONG(ZEND_MM_ALIGNED_SIZE(ZEND_VM_STACK_HEADER_SLOTS * sizeof(zval)))),
-		zend_jit_GEP(
-			llvm_ctx,
-			page,
-			offsetof(struct _zend_vm_stack, top),
-			PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))), 4);
-	//JIT: page->end = (zval*)((char*)page + size);
-	llvm_ctx.builder.CreateAlignedStore(
-		llvm_ctx.builder.CreateAdd(
-			llvm_ctx.builder.CreatePtrToInt(
-				page,
-				LLVM_GET_LONG_TY(llvm_ctx.context)),
-			size),
-		zend_jit_GEP(
-			llvm_ctx,
-			page,
-			offsetof(struct _zend_vm_stack, end),
-			PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))), 4);
-	//JIT: page->prev = prev;
-	llvm_ctx.builder.CreateAlignedStore(
-		prev,
-		zend_jit_GEP(
-			llvm_ctx,
-			page,
-			offsetof(struct _zend_vm_stack, prev),
-			PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_vm_stack_type))), 4);
-	//JIT: return page;
-	return page;
-}
-/* }}} */
-
 /* {{{ zend_jit_vm_stack_extend */
-static int zend_jit_vm_stack_extend(zend_llvm_ctx    &llvm_ctx,
-                                    Value            *size,
-                                    Value            *vm_stack,
-                                    uint32_t          lineno)
+static Value* zend_jit_vm_stack_extend(zend_llvm_ctx    &llvm_ctx,
+                                    Value            *size)
 {
-	PHI_DCL(size, 2);
-		
-	//JIT: EG(argument_stack) = zend_vm_stack_new_page(
-	//	EXPECTED(size < ZEND_VM_STACK_FREE_PAGE_SIZE) ?
-	//		ZEND_VM_STACK_PAGE_SIZE : ZEND_VM_STACK_PAGE_ALIGNED_SIZE(size), 
-	//	EG(argument_stack));
-	BasicBlock *bb_less = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
-	BasicBlock *bb_more = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
-	BasicBlock *bb_common = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
-	zend_jit_expected_br(llvm_ctx,
-		llvm_ctx.builder.CreateICmpULT(
-			size,
-			LLVM_GET_LONG(ZEND_VM_STACK_FREE_PAGE_SIZE)),
-		bb_less,
-		bb_more);
-	llvm_ctx.builder.SetInsertPoint(bb_less);
-	size = LLVM_GET_LONG(ZEND_VM_STACK_PAGE_SIZE);
-	PHI_ADD(size, size);
-	llvm_ctx.builder.CreateBr(bb_common);
+	Function *_helper = zend_jit_get_helper(
+			llvm_ctx,
+			(void*)zend_vm_stack_extend,
+			ZEND_JIT_SYM("zend_vm_stack_extend"),
+			0,
+			LLVM_GET_LONG_TY(llvm_ctx.context),
+			LLVM_GET_LONG_TY(llvm_ctx.context),
+			NULL,
+			NULL,
+			NULL,
+			NULL);
 
-	llvm_ctx.builder.SetInsertPoint(bb_more);
-	//JIT: (((size) + (ZEND_VM_STACK_FREE_PAGE_SIZE - 1)) & ~ZEND_VM_STACK_PAGE_SIZE)
-	size = llvm_ctx.builder.CreateAnd(
-		llvm_ctx.builder.CreateAdd(
-			size,
-			LLVM_GET_LONG(ZEND_VM_STACK_FREE_PAGE_SIZE - 1)),
-		LLVM_GET_LONG(~ZEND_VM_STACK_PAGE_SIZE));
-	PHI_ADD(size, size);
-	llvm_ctx.builder.CreateBr(bb_common);
-
-	llvm_ctx.builder.SetInsertPoint(bb_common);
-	PHI_SET(size, size, LLVM_GET_LONG_TY(llvm_ctx.context));
-
-	llvm_ctx.builder.CreateAlignedStore(
-		llvm_ctx.builder.CreateBitCast(
-			zend_jit_vm_stack_new_page(llvm_ctx,
-				size,
-				vm_stack,
-				lineno),
-			PointerType::getUnqual(llvm_ctx.zend_vm_stack_type)),
-		llvm_ctx._EG_argument_stack, 4);
-
-	return 1;
+	return llvm_ctx.builder.CreateCall(_helper, size);
 }
 /* }}} */
 
@@ -10939,65 +10866,43 @@ static Value* zend_jit_vm_stack_alloc(zend_llvm_ctx    &llvm_ctx,
                                       Value            *size,
                                       uint32_t          lineno)
 {
-	// JIT: char *top = (char*)EG(argument_stack)->top;
-	Value *vm_stack = llvm_ctx.builder.CreateAlignedLoad(
-			llvm_ctx._EG_argument_stack, 4);
+	// JIT: char *top = (char*)EG(vm_stack_top);
 	Value *top = llvm_ctx.builder.CreateAlignedLoad(
-		zend_jit_GEP(
-			llvm_ctx,
-			vm_stack,
-			offsetof(struct _zend_vm_stack, top),
-			PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))), 4);
-	PHI_DCL(vm_stack, 2);
-	PHI_DCL(top, 2);
+			llvm_ctx._EG_vm_stack_top, 4);
+	PHI_DCL(ret, 2);
 
-	PHI_ADD(vm_stack, vm_stack);
-	PHI_ADD(top, top);
-
-	//JIT: if (UNEXPECTED(size > (size_t)(((char*)EG(argument_stack)->end) - top))) {
+	//JIT: if (UNEXPECTED(size > (size_t)(((char*)EG(vm_stack_end)) - top))) {
 	BasicBlock *bb_extend = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+	BasicBlock *bb_add = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 	BasicBlock *bb_common = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 	zend_jit_unexpected_br(llvm_ctx,
 		llvm_ctx.builder.CreateICmpUGT(
 				size,
 				llvm_ctx.builder.CreateSub(
 					llvm_ctx.builder.CreateAlignedLoad(
-						zend_jit_GEP(
-							llvm_ctx,
-							vm_stack,
-							offsetof(struct _zend_vm_stack, end),
-							PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))), 4),
+						llvm_ctx._EG_vm_stack_end, 4),
 					top)),
 		bb_extend,
-		bb_common);
+		bb_add);
 	llvm_ctx.builder.SetInsertPoint(bb_extend);
-	//JIT: zend_vm_stack_extend(size TSRMLS_CC);
-	zend_jit_vm_stack_extend(llvm_ctx, size, vm_stack, lineno);
-	//JIT: top = (char*)EG(argument_stack)->top;
-	vm_stack = llvm_ctx.builder.CreateAlignedLoad(
-			llvm_ctx._EG_argument_stack, 4);
-	top = llvm_ctx.builder.CreateAlignedLoad(
-		zend_jit_GEP(
-			llvm_ctx,
-			vm_stack,
-			offsetof(struct _zend_vm_stack, top),
-			PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))), 4);
-	PHI_ADD(vm_stack, vm_stack);
-	PHI_ADD(top, top);
+	//JIT: return zend_vm_stack_extend(size TSRMLS_CC);
+	Value *ret = zend_jit_vm_stack_extend(llvm_ctx, size);
+	PHI_ADD(ret, ret);
 	llvm_ctx.builder.CreateBr(bb_common);
-	llvm_ctx.builder.SetInsertPoint(bb_common);
-	PHI_SET(vm_stack, vm_stack, PointerType::getUnqual(llvm_ctx.zend_vm_stack_type));
-	PHI_SET(top, top, LLVM_GET_LONG_TY(llvm_ctx.context));
-	//JIT: EG(argument_stack)->top = (zval*)(top + size);
+
+	llvm_ctx.builder.SetInsertPoint(bb_add);
+	//JIT: EG(vm_stack_top) = (zval*)(top + size);
 	llvm_ctx.builder.CreateAlignedStore(
 		llvm_ctx.builder.CreateAdd(
 			top,
-			size),		
-		zend_jit_GEP(
-			llvm_ctx,
-			vm_stack,
-			offsetof(struct _zend_vm_stack, top),
-			PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))), 4);
+			size),
+		llvm_ctx._EG_vm_stack_top, 4);	
+	PHI_ADD(ret, top);
+	llvm_ctx.builder.CreateBr(bb_common);
+
+	llvm_ctx.builder.SetInsertPoint(bb_common);
+
+	PHI_SET(ret, ret, LLVM_GET_LONG_TY(llvm_ctx.context));
 	//JIT: return (zval*)top;
 	return llvm_ctx.builder.CreateIntToPtr(top,
 			PointerType::getUnqual(llvm_ctx.zend_execute_data_type));
@@ -11353,8 +11258,8 @@ static int zend_jit_vm_stack_free_call_frame(zend_llvm_ctx    &llvm_ctx,
                                              Value            *call,
                                              uint32_t          lineno)
 {
-	//JIT: zend_vm_stack p = EG(argument_stack);
-	Value *p = llvm_ctx.builder.CreateAlignedLoad(llvm_ctx._EG_argument_stack, 4);
+	//JIT: zend_vm_stack p = EG(vm_stack);
+	Value *p = llvm_ctx.builder.CreateAlignedLoad(llvm_ctx._EG_vm_stack, 4);
 	//JIT: if (UNEXPECTED(ZEND_VM_STACK_ELEMETS(p) == (zval*)call)) {
 	BasicBlock *bb_fast = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 	BasicBlock *bb_slow = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
@@ -11370,27 +11275,45 @@ static int zend_jit_vm_stack_free_call_frame(zend_llvm_ctx    &llvm_ctx,
 		bb_slow,
 		bb_fast);
 	llvm_ctx.builder.SetInsertPoint(bb_slow);
-	//JIT: EG(argument_stack) = p->prev;
+	//JIT: zend_vm_stack prev = p->prev;
+	Value *prev = llvm_ctx.builder.CreateAlignedLoad(
+			zend_jit_GEP(
+				llvm_ctx,
+				p,
+				offsetof(struct _zend_vm_stack, prev),
+				PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_vm_stack_type))), 4);
+	//JIT: EG(vm_stack_top) = prev->top;
 	llvm_ctx.builder.CreateAlignedStore(
 		llvm_ctx.builder.CreateAlignedLoad(
 			zend_jit_GEP(
 				llvm_ctx,
 				p,
-				offsetof(struct _zend_vm_stack, prev),
-				PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_vm_stack_type))), 4),
-		llvm_ctx._EG_argument_stack, 4);
+				offsetof(struct _zend_vm_stack, top),
+				PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))), 4),
+		llvm_ctx._EG_vm_stack_top, 4);
+	//JIT: EG(vm_stack_end) = prev->end;
+	llvm_ctx.builder.CreateAlignedStore(
+		llvm_ctx.builder.CreateAlignedLoad(
+			zend_jit_GEP(
+				llvm_ctx,
+				p,
+				offsetof(struct _zend_vm_stack, end),
+				PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))), 4),
+		llvm_ctx._EG_vm_stack_end, 4);
+	//JIT: EG(vm_stack) = prev;
+	llvm_ctx.builder.CreateAlignedStore(
+		prev,
+		llvm_ctx._EG_vm_stack, 4);
 	//JIT: efree(p);
 	zend_jit_efree(llvm_ctx, p, lineno);
 	//JIT: p->top = (zval*)call;
 	llvm_ctx.builder.CreateBr(bb_common);	
 	llvm_ctx.builder.SetInsertPoint(bb_fast);
 	llvm_ctx.builder.CreateAlignedStore(
-		call,
-		zend_jit_GEP(
-			llvm_ctx,
-			p,
-			offsetof(struct _zend_vm_stack, top),
-			PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_execute_data_type))), 4);
+		llvm_ctx.builder.CreatePtrToInt(
+			call,
+			LLVM_GET_LONG_TY(llvm_ctx.context)),
+		llvm_ctx._EG_vm_stack_top, 4);
 	llvm_ctx.builder.CreateBr(bb_common);	
 	llvm_ctx.builder.SetInsertPoint(bb_common);	
 	return 1;
@@ -14220,15 +14143,35 @@ static int zend_jit_codegen_start_module(zend_jit_context *ctx, zend_op_array *o
 			ZEND_JIT_SYM("EG_exception"));
 	llvm_ctx.engine->addGlobalMapping(llvm_ctx._EG_exception, (void*)&EG(exception));
 
-	// Create LLVM reference to EG(argument_stack)
-	llvm_ctx._EG_argument_stack = new GlobalVariable(
+	// Create LLVM reference to EG(vm_stack_top)
+	llvm_ctx._EG_vm_stack_top = new GlobalVariable(
+			*llvm_ctx.module,
+			LLVM_GET_LONG_TY(llvm_ctx.context),
+			false,
+			GlobalVariable::ExternalLinkage,
+			0,
+			ZEND_JIT_SYM("EG_vm_stack_top"));
+	llvm_ctx.engine->addGlobalMapping(llvm_ctx._EG_vm_stack_top, (void*)&EG(vm_stack_top));
+	
+	// Create LLVM reference to EG(vm_stack_end)
+	llvm_ctx._EG_vm_stack_end = new GlobalVariable(
+			*llvm_ctx.module,
+			LLVM_GET_LONG_TY(llvm_ctx.context),
+			false,
+			GlobalVariable::ExternalLinkage,
+			0,
+			ZEND_JIT_SYM("EG_vm_stack_end"));
+	llvm_ctx.engine->addGlobalMapping(llvm_ctx._EG_vm_stack_end, (void*)&EG(vm_stack_end));
+	
+	// Create LLVM reference to EG(vm_stack)
+	llvm_ctx._EG_vm_stack = new GlobalVariable(
 			*llvm_ctx.module,
 			PointerType::getUnqual(llvm_ctx.zend_vm_stack_type),
 			false,
 			GlobalVariable::ExternalLinkage,
 			0,
-			ZEND_JIT_SYM("EG_argument_stack"));
-	llvm_ctx.engine->addGlobalMapping(llvm_ctx._EG_argument_stack, (void*)&EG(argument_stack));
+			ZEND_JIT_SYM("EG_vm_stack"));
+	llvm_ctx.engine->addGlobalMapping(llvm_ctx._EG_vm_stack, (void*)&EG(vm_stack));
 	
 	// Create LLVM reference to EG(objects_store)
 	llvm_ctx._EG_objects_store = new GlobalVariable(
