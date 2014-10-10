@@ -10874,7 +10874,7 @@ static Value* zend_jit_vm_stack_alloc(zend_llvm_ctx    &llvm_ctx,
 
 	PHI_SET(ret, ret, LLVM_GET_LONG_TY(llvm_ctx.context));
 	//JIT: return (zval*)top;
-	return llvm_ctx.builder.CreateIntToPtr(top,
+	return llvm_ctx.builder.CreateIntToPtr(ret,
 			PointerType::getUnqual(llvm_ctx.zend_execute_data_type));
 }
 /* }}} */
@@ -11257,7 +11257,7 @@ static int zend_jit_vm_stack_free_call_frame(zend_llvm_ctx    &llvm_ctx,
 		llvm_ctx.builder.CreateAlignedLoad(
 			zend_jit_GEP(
 				llvm_ctx,
-				p,
+				prev,
 				offsetof(struct _zend_vm_stack, top),
 				PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))), 4),
 		llvm_ctx._EG_vm_stack_top, 4);
@@ -11266,7 +11266,7 @@ static int zend_jit_vm_stack_free_call_frame(zend_llvm_ctx    &llvm_ctx,
 		llvm_ctx.builder.CreateAlignedLoad(
 			zend_jit_GEP(
 				llvm_ctx,
-				p,
+				prev,
 				offsetof(struct _zend_vm_stack, end),
 				PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))), 4),
 		llvm_ctx._EG_vm_stack_end, 4);
