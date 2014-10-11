@@ -2166,7 +2166,7 @@ static int zend_jit_build_ssa(zend_jit_context *ctx, zend_op_array *op_array)
 	gen = dfg.gen;
 	in  = dfg.in;
 
-	/* SSA construction, Step 1: Propagete "gen" sets in merge points */
+	/* SSA construction, Step 1: Propagate "gen" sets in merge points */
 	do {
 		changed = 0;
 		for (j = 0; j < blocks; j++) {
