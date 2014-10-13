@@ -6816,9 +6816,9 @@ static void zend_jit_assign_to_object(zend_llvm_ctx     &llvm_ctx,
 		llvm_ctx.builder.SetInsertPoint(bb_follow);
 	}
 
-	/* ???
 	if ((opline + 1)->op1_type == IS_TMP_VAR) {
-	} else */ if ((opline + 1)->op1_type == IS_CONST &&
+		/* ??? */
+	} else if ((opline + 1)->op1_type == IS_CONST &&
 			(OP1_DATA_INFO() & (MAY_BE_STRING|MAY_BE_ARRAY))) {
 		Value *real_val;
 		Value *val_info = zend_jit_load_type_info_c(llvm_ctx, value, IS_CONST, (opline + 1)->op1, OP1_DATA_INFO());
@@ -6852,7 +6852,7 @@ static void zend_jit_assign_to_object(zend_llvm_ctx     &llvm_ctx,
 		llvm_ctx.builder.CreateBr(bb_cont);
 		llvm_ctx.builder.SetInsertPoint(bb_cont);
 		PHI_SET(real_val, value, llvm_ctx.zval_ptr_type);
-	} else if ((opline + 1)->op1_type == IS_VAR) {
+	} else {
 		zend_jit_try_addref(llvm_ctx, value, NULL, (opline + 1)->op1_type, (opline + 1)->op1, OP1_DATA_INFO());
 	}
 
