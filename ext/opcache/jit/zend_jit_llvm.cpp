@@ -2365,7 +2365,7 @@ static void zend_jit_write_property(zend_llvm_ctx  &llvm_ctx,
 
 	CallInst *call = llvm_ctx.builder.CreateCall4(
 			helper, 
-			obj, 
+			obj,
 			dim,
 			val,
 			cache_slot);
@@ -6763,7 +6763,7 @@ static void zend_jit_assign_to_object(zend_llvm_ctx     &llvm_ctx,
 		}
 		
 		if (bb_convert_to_object) {
-			Value *obj;
+			Value *counted;
 			BasicBlock *bb_release_obj;
 
 			llvm_ctx.builder.SetInsertPoint(bb_convert_to_object);
@@ -6772,8 +6772,8 @@ static void zend_jit_assign_to_object(zend_llvm_ctx     &llvm_ctx,
 			bb_cont = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 
 			zend_jit_object_init(llvm_ctx, container, opline->lineno);
-			obj = zend_jit_load_counted(llvm_ctx, container);
-			zend_jit_addref(llvm_ctx, obj);
+			counted = zend_jit_load_counted(llvm_ctx, container);
+			zend_jit_addref(llvm_ctx, counted);
 
 			zend_jit_error(
 					llvm_ctx,
@@ -6785,7 +6785,7 @@ static void zend_jit_assign_to_object(zend_llvm_ctx     &llvm_ctx,
 			zend_jit_unexpected_br(llvm_ctx,
 					llvm_ctx.builder.CreateICmpEQ(
 						llvm_ctx.builder.CreateAlignedLoad(
-						zend_jit_refcount_addr(llvm_ctx, obj), 4),
+							zend_jit_refcount_addr(llvm_ctx, counted), 4),
 						llvm_ctx.builder.getInt32(1)),
 					bb_release_obj,
 					bb_cont);
@@ -6795,15 +6795,17 @@ static void zend_jit_assign_to_object(zend_llvm_ctx     &llvm_ctx,
 			if (result) {
 				zend_jit_save_zval_type_info(llvm_ctx, result, llvm_ctx.builder.getInt32(IS_NULL));
 			}
+
 			zend_jit_object_release(llvm_ctx, zend_jit_load_obj(llvm_ctx, container), opline->lineno);
 			//TODO: FREE_OP(free_value);
 			if (!bb_finish) {
 				bb_finish = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 			}
 			llvm_ctx.builder.CreateBr(bb_finish);
-
 			llvm_ctx.builder.SetInsertPoint(bb_cont);
-			zend_jit_delref(llvm_ctx, obj);
+
+			zend_jit_delref(llvm_ctx, counted);
+
 			if (bb_follow) {
 				llvm_ctx.builder.CreateBr(bb_follow);
 			}
@@ -11124,10 +11126,12 @@ static int zend_jit_assign_dim(zend_llvm_ctx     &llvm_ctx,
 					bb_follow);
 			llvm_ctx.builder.SetInsertPoint(bb_object);
 		}
+
 		if (opline->op2_type != IS_UNUSED) {
 			dim = zend_jit_load_operand(llvm_ctx,
 					opline->op2_type, opline->op2, OP2_SSA_VAR(), OP2_INFO(), 0, opline);
 		}
+
 		zend_jit_assign_to_object(
 				llvm_ctx,
 				zend_jit_load_operand_scope(llvm_ctx, OP1_SSA_VAR(), opline->op1_type, ctx, op_array),
@@ -11142,14 +11146,7 @@ static int zend_jit_assign_dim(zend_llvm_ctx     &llvm_ctx,
 				opline->op2,
 				opline->op2_type,
 				zend_jit_load_slot(llvm_ctx, opline->result.var),
-				(opline->op2_type == IS_CONST)?
-				zend_jit_cache_slot_addr(
-					llvm_ctx,
-					Z_CACHE_SLOT_P(opline->op2.zv),
-					PointerType::getUnqual(PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context)))) : 
-				llvm_ctx.builder.CreateIntToPtr(
-					LLVM_GET_LONG(0),
-					PointerType::getUnqual(PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context)))),
+				NULL,
 				ZEND_ASSIGN_DIM,
 				op_array,
 				opline,
@@ -11452,7 +11449,7 @@ static int zend_jit_assign_obj(zend_llvm_ctx     &llvm_ctx,
 	}
 
 	op1_addr = zend_jit_load_operand(llvm_ctx,
-			opline->op1_type, opline->op1, OP1_SSA_VAR(), OP1_INFO(), 0, opline, 1);
+			opline->op1_type, opline->op1, OP1_SSA_VAR(), OP1_INFO(), 0, opline, 1, BP_VAR_W);
 	property = zend_jit_load_operand(llvm_ctx,
 			opline->op2_type, opline->op2, OP2_SSA_VAR(), OP2_INFO(), 0, opline);
 
@@ -11477,7 +11474,7 @@ static int zend_jit_assign_obj(zend_llvm_ctx     &llvm_ctx,
 				PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))) : 
 			llvm_ctx.builder.CreateIntToPtr(
 				LLVM_GET_LONG(0),
-				PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))),
+				PointerType::getUnqual(PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context)))),
 			ZEND_ASSIGN_OBJ,
 			op_array,
 			opline,
@@ -14379,11 +14376,9 @@ static int zend_jit_codegen_ex(zend_jit_context *ctx,
 				case ZEND_ASSIGN_DIM:
 					if (!zend_jit_assign_dim(llvm_ctx, ctx, op_array, opline)) return 0;
 					break;
-#if 0
 				case ZEND_ASSIGN_OBJ:
 					if (!zend_jit_assign_obj(llvm_ctx, ctx, op_array, opline)) return 0;
 					break;
-#endif
 				case ZEND_PRE_INC:
 				case ZEND_PRE_DEC:
 				case ZEND_POST_INC:
