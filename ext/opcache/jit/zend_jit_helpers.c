@@ -200,7 +200,7 @@ ZEND_FASTCALL int zend_jit_helper_slow_fetch_address_obj(zval *container, zval *
 		zend_class_entry *ce = Z_OBJCE_P(container);
 
 		zend_error(E_NOTICE, "Indirect modification of overloaded element of %s has no effect", ce->name->val);
-		return -1;
+		return 0;
 	} else if (EXPECTED(retval && Z_TYPE_P(retval) != IS_UNDEF)) {
 		if (!Z_ISREF_P(retval)) {
 			if (Z_REFCOUNTED_P(retval) &&
@@ -208,10 +208,10 @@ ZEND_FASTCALL int zend_jit_helper_slow_fetch_address_obj(zval *container, zval *
 				if (Z_TYPE_P(retval) != IS_OBJECT) {
 					Z_DELREF_P(retval);
 					ZVAL_DUP(result, retval);
-					return 0;
+					return 1;
 				} else {
 					ZVAL_COPY(result, retval);
-					return 0;
+					return 1;
 				}
 			}
 			if (Z_TYPE_P(retval) != IS_OBJECT) {
@@ -219,9 +219,14 @@ ZEND_FASTCALL int zend_jit_helper_slow_fetch_address_obj(zval *container, zval *
 				zend_error(E_NOTICE, "Indirect modification of overloaded element of %s has no effect", ce->name->val);
 			}
 		}
-		return 0;
-	} else {
+
+		if (retval != result) {
+			return 2;
+		}
+
 		return 1;
+	} else {
+		return -1;
 	}
 }
 
