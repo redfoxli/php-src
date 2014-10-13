@@ -2893,15 +2893,13 @@ static int ZEND_FASTCALL  ZEND_CAST_SPEC_CONST_HANDLER(ZEND_OPCODE_HANDLER_ARGS)
 							if (UNEXPECTED(Z_OPT_COPYABLE_P(expr))) {
 								zval_copy_ctor_func(expr);
 							}
-						} else if (IS_CONST != IS_TMP_VAR) {
+						} else {
 							if (Z_OPT_REFCOUNTED_P(expr)) Z_ADDREF_P(expr);
 						}
 					}
 				} else {
 					ZVAL_COPY_VALUE(result, expr);
-					if (IS_CONST != IS_TMP_VAR) {
-						zval_opt_copy_ctor(result);
-					}
+					Z_ADDREF_P(result);
 					convert_to_array(result);
 				}
 			} else {
@@ -2913,21 +2911,16 @@ static int ZEND_FASTCALL  ZEND_CAST_SPEC_CONST_HANDLER(ZEND_OPCODE_HANDLER_ARGS)
 							if (UNEXPECTED(Z_OPT_COPYABLE_P(expr))) {
 								zval_copy_ctor_func(expr);
 							}
-						} else if (IS_CONST != IS_TMP_VAR) {
+						} else {
 							if (Z_OPT_REFCOUNTED_P(expr)) Z_ADDREF_P(expr);
 						}
 					}
 				} else {
 					ZVAL_COPY_VALUE(result, expr);
-					if (IS_CONST != IS_TMP_VAR) {
-						zval_opt_copy_ctor(result);
-					}
+					zval_opt_copy_ctor(result);
 					convert_to_object(result);
 				}
 			}
-
-			CHECK_EXCEPTION();
-			ZEND_VM_NEXT_OPCODE();
 	}
 
 	CHECK_EXCEPTION();
@@ -9695,7 +9688,6 @@ static int ZEND_FASTCALL  ZEND_CAST_SPEC_TMP_HANDLER(ZEND_OPCODE_HANDLER_ARGS)
 					if (Z_OPT_REFCOUNTED_P(expr)) Z_ADDREF_P(expr);
 				}
 
-				zval_ptr_dtor_nogc(free_op1.var);
 				CHECK_EXCEPTION();
 				ZEND_VM_NEXT_OPCODE();
 			}
@@ -9710,15 +9702,13 @@ static int ZEND_FASTCALL  ZEND_CAST_SPEC_TMP_HANDLER(ZEND_OPCODE_HANDLER_ARGS)
 							if (UNEXPECTED(Z_OPT_COPYABLE_P(expr))) {
 								zval_copy_ctor_func(expr);
 							}
-						} else if (IS_TMP_VAR != IS_TMP_VAR) {
+						} else {
 							if (Z_OPT_REFCOUNTED_P(expr)) Z_ADDREF_P(expr);
 						}
 					}
 				} else {
 					ZVAL_COPY_VALUE(result, expr);
-					if (IS_TMP_VAR != IS_TMP_VAR) {
-						zval_opt_copy_ctor(result);
-					}
+					Z_ADDREF_P(result);
 					convert_to_array(result);
 				}
 			} else {
@@ -9730,22 +9720,18 @@ static int ZEND_FASTCALL  ZEND_CAST_SPEC_TMP_HANDLER(ZEND_OPCODE_HANDLER_ARGS)
 							if (UNEXPECTED(Z_OPT_COPYABLE_P(expr))) {
 								zval_copy_ctor_func(expr);
 							}
-						} else if (IS_TMP_VAR != IS_TMP_VAR) {
+						} else {
 							if (Z_OPT_REFCOUNTED_P(expr)) Z_ADDREF_P(expr);
 						}
 					}
 				} else {
 					ZVAL_COPY_VALUE(result, expr);
-					if (IS_TMP_VAR != IS_TMP_VAR) {
-						zval_opt_copy_ctor(result);
-					}
+					zval_opt_copy_ctor(result);
 					convert_to_object(result);
 				}
 			}
-
-			CHECK_EXCEPTION();
-			ZEND_VM_NEXT_OPCODE();
 	}
+
 	zval_ptr_dtor_nogc(free_op1.var);
 	CHECK_EXCEPTION();
 	ZEND_VM_NEXT_OPCODE();
@@ -16431,15 +16417,13 @@ static int ZEND_FASTCALL  ZEND_CAST_SPEC_VAR_HANDLER(ZEND_OPCODE_HANDLER_ARGS)
 							if (UNEXPECTED(Z_OPT_COPYABLE_P(expr))) {
 								zval_copy_ctor_func(expr);
 							}
-						} else if (IS_VAR != IS_TMP_VAR) {
+						} else {
 							if (Z_OPT_REFCOUNTED_P(expr)) Z_ADDREF_P(expr);
 						}
 					}
 				} else {
 					ZVAL_COPY_VALUE(result, expr);
-					if (IS_VAR != IS_TMP_VAR) {
-						zval_opt_copy_ctor(result);
-					}
+					Z_ADDREF_P(result);
 					convert_to_array(result);
 				}
 			} else {
@@ -16451,23 +16435,18 @@ static int ZEND_FASTCALL  ZEND_CAST_SPEC_VAR_HANDLER(ZEND_OPCODE_HANDLER_ARGS)
 							if (UNEXPECTED(Z_OPT_COPYABLE_P(expr))) {
 								zval_copy_ctor_func(expr);
 							}
-						} else if (IS_VAR != IS_TMP_VAR) {
+						} else {
 							if (Z_OPT_REFCOUNTED_P(expr)) Z_ADDREF_P(expr);
 						}
 					}
 				} else {
 					ZVAL_COPY_VALUE(result, expr);
-					if (IS_VAR != IS_TMP_VAR) {
-						zval_opt_copy_ctor(result);
-					}
+					zval_opt_copy_ctor(result);
 					convert_to_object(result);
 				}
 			}
-
-			zval_ptr_dtor_nogc(free_op1.var);
-			CHECK_EXCEPTION();
-			ZEND_VM_NEXT_OPCODE();
 	}
+
 	zval_ptr_dtor_nogc(free_op1.var);
 	CHECK_EXCEPTION();
 	ZEND_VM_NEXT_OPCODE();
@@ -17543,7 +17522,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_VAR_CONST(int (*b
 		object = make_real_object(object TSRMLS_CC);
 	}
 
-	value = get_zval_ptr((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
+	value = get_zval_ptr_deref((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
 
 	if (IS_VAR != IS_UNUSED && UNEXPECTED(Z_TYPE_P(object) != IS_OBJECT)) {
 		zend_error(E_WARNING, "Attempt to assign property of non-object");
@@ -17643,7 +17622,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_dim_helper_SPEC_VAR_CONST(int (*b
 		zval *dim = opline->op2.zv;
 
 		zend_fetch_dimension_address_RW(EX_VAR((opline+1)->op2.var), container, dim, IS_CONST TSRMLS_CC);
-		value = get_zval_ptr((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
+		value = get_zval_ptr_deref((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
 		var_ptr = _get_zval_ptr_ptr_var((opline+1)->op2.var, execute_data, &free_op_data2 TSRMLS_CC);
 	}
 
@@ -17918,7 +17897,8 @@ static int ZEND_FASTCALL zend_pre_incdec_property_helper_SPEC_VAR_CONST(incdec_t
 	if (Z_OBJ_HT_P(object)->get_property_ptr_ptr) {
 		zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_CONST == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 		if (zptr != NULL) { 			/* NULL means no success in getting PTR */
-			SEPARATE_ZVAL_IF_NOT_REF(zptr);
+			ZVAL_DEREF(zptr);
+			SEPARATE_ZVAL_NOREF(zptr);
 
 			have_get_ptr = 1;
 			incdec_op(zptr);
@@ -18010,12 +17990,11 @@ static int ZEND_FASTCALL zend_post_incdec_property_helper_SPEC_VAR_CONST(incdec_
 		zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_CONST == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 		if (zptr != NULL) { 			/* NULL means no success in getting PTR */
 			have_get_ptr = 1;
-			SEPARATE_ZVAL_IF_NOT_REF(zptr);
+			ZVAL_DEREF(zptr);
+			ZVAL_COPY(retval, zptr);
 
-			ZVAL_DUP(retval, zptr);
-
+			SEPARATE_ZVAL_NOREF(zptr);
 			incdec_op(zptr);
-
 		}
 	}
 
@@ -19980,7 +19959,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_VAR_TMP(int (*bin
 		object = make_real_object(object TSRMLS_CC);
 	}
 
-	value = get_zval_ptr((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
+	value = get_zval_ptr_deref((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
 
 	if (IS_VAR != IS_UNUSED && UNEXPECTED(Z_TYPE_P(object) != IS_OBJECT)) {
 		zend_error(E_WARNING, "Attempt to assign property of non-object");
@@ -20081,7 +20060,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_dim_helper_SPEC_VAR_TMP(int (*bin
 		zval *dim = _get_zval_ptr_tmp(opline->op2.var, execute_data, &free_op2 TSRMLS_CC);
 
 		zend_fetch_dimension_address_RW(EX_VAR((opline+1)->op2.var), container, dim, IS_TMP_VAR TSRMLS_CC);
-		value = get_zval_ptr((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
+		value = get_zval_ptr_deref((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
 		var_ptr = _get_zval_ptr_ptr_var((opline+1)->op2.var, execute_data, &free_op_data2 TSRMLS_CC);
 	}
 
@@ -20356,7 +20335,8 @@ static int ZEND_FASTCALL zend_pre_incdec_property_helper_SPEC_VAR_TMP(incdec_t i
 	if (Z_OBJ_HT_P(object)->get_property_ptr_ptr) {
 		zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_TMP_VAR == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 		if (zptr != NULL) { 			/* NULL means no success in getting PTR */
-			SEPARATE_ZVAL_IF_NOT_REF(zptr);
+			ZVAL_DEREF(zptr);
+			SEPARATE_ZVAL_NOREF(zptr);
 
 			have_get_ptr = 1;
 			incdec_op(zptr);
@@ -20449,12 +20429,11 @@ static int ZEND_FASTCALL zend_post_incdec_property_helper_SPEC_VAR_TMP(incdec_t 
 		zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_TMP_VAR == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 		if (zptr != NULL) { 			/* NULL means no success in getting PTR */
 			have_get_ptr = 1;
-			SEPARATE_ZVAL_IF_NOT_REF(zptr);
+			ZVAL_DEREF(zptr);
+			ZVAL_COPY(retval, zptr);
 
-			ZVAL_DUP(retval, zptr);
-
+			SEPARATE_ZVAL_NOREF(zptr);
 			incdec_op(zptr);
-
 		}
 	}
 
@@ -21992,7 +21971,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_VAR_VAR(int (*bin
 		object = make_real_object(object TSRMLS_CC);
 	}
 
-	value = get_zval_ptr((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
+	value = get_zval_ptr_deref((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
 
 	if (IS_VAR != IS_UNUSED && UNEXPECTED(Z_TYPE_P(object) != IS_OBJECT)) {
 		zend_error(E_WARNING, "Attempt to assign property of non-object");
@@ -22093,7 +22072,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_dim_helper_SPEC_VAR_VAR(int (*bin
 		zval *dim = _get_zval_ptr_var_deref(opline->op2.var, execute_data, &free_op2 TSRMLS_CC);
 
 		zend_fetch_dimension_address_RW(EX_VAR((opline+1)->op2.var), container, dim, IS_VAR TSRMLS_CC);
-		value = get_zval_ptr((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
+		value = get_zval_ptr_deref((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
 		var_ptr = _get_zval_ptr_ptr_var((opline+1)->op2.var, execute_data, &free_op_data2 TSRMLS_CC);
 	}
 
@@ -22146,7 +22125,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_helper_SPEC_VAR_VAR(int (*binary_
 	zval *value;
 
 	SAVE_OPLINE();
-	value = _get_zval_ptr_var(opline->op2.var, execute_data, &free_op2 TSRMLS_CC);
+	value = _get_zval_ptr_var_deref(opline->op2.var, execute_data, &free_op2 TSRMLS_CC);
 	var_ptr = _get_zval_ptr_ptr_var(opline->op1.var, execute_data, &free_op1 TSRMLS_CC);
 
 	if (IS_VAR == IS_VAR && UNEXPECTED(var_ptr == NULL)) {
@@ -22368,7 +22347,8 @@ static int ZEND_FASTCALL zend_pre_incdec_property_helper_SPEC_VAR_VAR(incdec_t i
 	if (Z_OBJ_HT_P(object)->get_property_ptr_ptr) {
 		zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_VAR == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 		if (zptr != NULL) { 			/* NULL means no success in getting PTR */
-			SEPARATE_ZVAL_IF_NOT_REF(zptr);
+			ZVAL_DEREF(zptr);
+			SEPARATE_ZVAL_NOREF(zptr);
 
 			have_get_ptr = 1;
 			incdec_op(zptr);
@@ -22461,12 +22441,11 @@ static int ZEND_FASTCALL zend_post_incdec_property_helper_SPEC_VAR_VAR(incdec_t 
 		zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_VAR == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 		if (zptr != NULL) { 			/* NULL means no success in getting PTR */
 			have_get_ptr = 1;
-			SEPARATE_ZVAL_IF_NOT_REF(zptr);
+			ZVAL_DEREF(zptr);
+			ZVAL_COPY(retval, zptr);
 
-			ZVAL_DUP(retval, zptr);
-
+			SEPARATE_ZVAL_NOREF(zptr);
 			incdec_op(zptr);
-
 		}
 	}
 
@@ -24098,7 +24077,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_VAR_UNUSED(int (*
 		object = make_real_object(object TSRMLS_CC);
 	}
 
-	value = get_zval_ptr((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
+	value = get_zval_ptr_deref((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
 
 	if (IS_VAR != IS_UNUSED && UNEXPECTED(Z_TYPE_P(object) != IS_OBJECT)) {
 		zend_error(E_WARNING, "Attempt to assign property of non-object");
@@ -24198,7 +24177,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_dim_helper_SPEC_VAR_UNUSED(int (*
 		zval *dim = NULL;
 
 		zend_fetch_dimension_address_RW(EX_VAR((opline+1)->op2.var), container, dim, IS_UNUSED TSRMLS_CC);
-		value = get_zval_ptr((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
+		value = get_zval_ptr_deref((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
 		var_ptr = _get_zval_ptr_ptr_var((opline+1)->op2.var, execute_data, &free_op_data2 TSRMLS_CC);
 	}
 
@@ -25571,7 +25550,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_VAR_CV(int (*bina
 		object = make_real_object(object TSRMLS_CC);
 	}
 
-	value = get_zval_ptr((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
+	value = get_zval_ptr_deref((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
 
 	if (IS_VAR != IS_UNUSED && UNEXPECTED(Z_TYPE_P(object) != IS_OBJECT)) {
 		zend_error(E_WARNING, "Attempt to assign property of non-object");
@@ -25671,7 +25650,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_dim_helper_SPEC_VAR_CV(int (*bina
 		zval *dim = _get_zval_ptr_cv_deref_BP_VAR_R(execute_data, opline->op2.var TSRMLS_CC);
 
 		zend_fetch_dimension_address_RW(EX_VAR((opline+1)->op2.var), container, dim, IS_CV TSRMLS_CC);
-		value = get_zval_ptr((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
+		value = get_zval_ptr_deref((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
 		var_ptr = _get_zval_ptr_ptr_var((opline+1)->op2.var, execute_data, &free_op_data2 TSRMLS_CC);
 	}
 
@@ -25724,7 +25703,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_helper_SPEC_VAR_CV(int (*binary_o
 	zval *value;
 
 	SAVE_OPLINE();
-	value = _get_zval_ptr_cv_BP_VAR_R(execute_data, opline->op2.var TSRMLS_CC);
+	value = _get_zval_ptr_cv_deref_BP_VAR_R(execute_data, opline->op2.var TSRMLS_CC);
 	var_ptr = _get_zval_ptr_ptr_var(opline->op1.var, execute_data, &free_op1 TSRMLS_CC);
 
 	if (IS_VAR == IS_VAR && UNEXPECTED(var_ptr == NULL)) {
@@ -25946,7 +25925,8 @@ static int ZEND_FASTCALL zend_pre_incdec_property_helper_SPEC_VAR_CV(incdec_t in
 	if (Z_OBJ_HT_P(object)->get_property_ptr_ptr) {
 		zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_CV == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 		if (zptr != NULL) { 			/* NULL means no success in getting PTR */
-			SEPARATE_ZVAL_IF_NOT_REF(zptr);
+			ZVAL_DEREF(zptr);
+			SEPARATE_ZVAL_NOREF(zptr);
 
 			have_get_ptr = 1;
 			incdec_op(zptr);
@@ -26038,12 +26018,11 @@ static int ZEND_FASTCALL zend_post_incdec_property_helper_SPEC_VAR_CV(incdec_t i
 		zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_CV == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 		if (zptr != NULL) { 			/* NULL means no success in getting PTR */
 			have_get_ptr = 1;
-			SEPARATE_ZVAL_IF_NOT_REF(zptr);
+			ZVAL_DEREF(zptr);
+			ZVAL_COPY(retval, zptr);
 
-			ZVAL_DUP(retval, zptr);
-
+			SEPARATE_ZVAL_NOREF(zptr);
 			incdec_op(zptr);
-
 		}
 	}
 
@@ -27441,7 +27420,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_UNUSED_CONST(int 
 		object = make_real_object(object TSRMLS_CC);
 	}
 
-	value = get_zval_ptr((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
+	value = get_zval_ptr_deref((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
 
 	if (IS_UNUSED != IS_UNUSED && UNEXPECTED(Z_TYPE_P(object) != IS_OBJECT)) {
 		zend_error(E_WARNING, "Attempt to assign property of non-object");
@@ -27540,7 +27519,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_dim_helper_SPEC_UNUSED_CONST(int 
 		zval *dim = opline->op2.zv;
 
 		zend_fetch_dimension_address_RW(EX_VAR((opline+1)->op2.var), container, dim, IS_CONST TSRMLS_CC);
-		value = get_zval_ptr((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
+		value = get_zval_ptr_deref((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
 		var_ptr = _get_zval_ptr_ptr_var((opline+1)->op2.var, execute_data, &free_op_data2 TSRMLS_CC);
 	}
 
@@ -27815,7 +27794,8 @@ static int ZEND_FASTCALL zend_pre_incdec_property_helper_SPEC_UNUSED_CONST(incde
 	if (Z_OBJ_HT_P(object)->get_property_ptr_ptr) {
 		zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_CONST == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 		if (zptr != NULL) { 			/* NULL means no success in getting PTR */
-			SEPARATE_ZVAL_IF_NOT_REF(zptr);
+			ZVAL_DEREF(zptr);
+			SEPARATE_ZVAL_NOREF(zptr);
 
 			have_get_ptr = 1;
 			incdec_op(zptr);
@@ -27907,12 +27887,11 @@ static int ZEND_FASTCALL zend_post_incdec_property_helper_SPEC_UNUSED_CONST(incd
 		zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_CONST == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 		if (zptr != NULL) { 			/* NULL means no success in getting PTR */
 			have_get_ptr = 1;
-			SEPARATE_ZVAL_IF_NOT_REF(zptr);
+			ZVAL_DEREF(zptr);
+			ZVAL_COPY(retval, zptr);
 
-			ZVAL_DUP(retval, zptr);
-
+			SEPARATE_ZVAL_NOREF(zptr);
 			incdec_op(zptr);
-
 		}
 	}
 
@@ -28831,7 +28810,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_UNUSED_TMP(int (*
 		object = make_real_object(object TSRMLS_CC);
 	}
 
-	value = get_zval_ptr((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
+	value = get_zval_ptr_deref((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
 
 	if (IS_UNUSED != IS_UNUSED && UNEXPECTED(Z_TYPE_P(object) != IS_OBJECT)) {
 		zend_error(E_WARNING, "Attempt to assign property of non-object");
@@ -28931,7 +28910,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_dim_helper_SPEC_UNUSED_TMP(int (*
 		zval *dim = _get_zval_ptr_tmp(opline->op2.var, execute_data, &free_op2 TSRMLS_CC);
 
 		zend_fetch_dimension_address_RW(EX_VAR((opline+1)->op2.var), container, dim, IS_TMP_VAR TSRMLS_CC);
-		value = get_zval_ptr((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
+		value = get_zval_ptr_deref((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
 		var_ptr = _get_zval_ptr_ptr_var((opline+1)->op2.var, execute_data, &free_op_data2 TSRMLS_CC);
 	}
 
@@ -29206,7 +29185,8 @@ static int ZEND_FASTCALL zend_pre_incdec_property_helper_SPEC_UNUSED_TMP(incdec_
 	if (Z_OBJ_HT_P(object)->get_property_ptr_ptr) {
 		zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_TMP_VAR == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 		if (zptr != NULL) { 			/* NULL means no success in getting PTR */
-			SEPARATE_ZVAL_IF_NOT_REF(zptr);
+			ZVAL_DEREF(zptr);
+			SEPARATE_ZVAL_NOREF(zptr);
 
 			have_get_ptr = 1;
 			incdec_op(zptr);
@@ -29299,12 +29279,11 @@ static int ZEND_FASTCALL zend_post_incdec_property_helper_SPEC_UNUSED_TMP(incdec
 		zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_TMP_VAR == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 		if (zptr != NULL) { 			/* NULL means no success in getting PTR */
 			have_get_ptr = 1;
-			SEPARATE_ZVAL_IF_NOT_REF(zptr);
+			ZVAL_DEREF(zptr);
+			ZVAL_COPY(retval, zptr);
 
-			ZVAL_DUP(retval, zptr);
-
+			SEPARATE_ZVAL_NOREF(zptr);
 			incdec_op(zptr);
-
 		}
 	}
 
@@ -30139,7 +30118,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_UNUSED_VAR(int (*
 		object = make_real_object(object TSRMLS_CC);
 	}
 
-	value = get_zval_ptr((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
+	value = get_zval_ptr_deref((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
 
 	if (IS_UNUSED != IS_UNUSED && UNEXPECTED(Z_TYPE_P(object) != IS_OBJECT)) {
 		zend_error(E_WARNING, "Attempt to assign property of non-object");
@@ -30239,7 +30218,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_dim_helper_SPEC_UNUSED_VAR(int (*
 		zval *dim = _get_zval_ptr_var_deref(opline->op2.var, execute_data, &free_op2 TSRMLS_CC);
 
 		zend_fetch_dimension_address_RW(EX_VAR((opline+1)->op2.var), container, dim, IS_VAR TSRMLS_CC);
-		value = get_zval_ptr((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
+		value = get_zval_ptr_deref((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
 		var_ptr = _get_zval_ptr_ptr_var((opline+1)->op2.var, execute_data, &free_op_data2 TSRMLS_CC);
 	}
 
@@ -30292,7 +30271,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_helper_SPEC_UNUSED_VAR(int (*bina
 	zval *value;
 
 	SAVE_OPLINE();
-	value = _get_zval_ptr_var(opline->op2.var, execute_data, &free_op2 TSRMLS_CC);
+	value = _get_zval_ptr_var_deref(opline->op2.var, execute_data, &free_op2 TSRMLS_CC);
 	var_ptr = NULL;
 
 	if (IS_UNUSED == IS_VAR && UNEXPECTED(var_ptr == NULL)) {
@@ -30514,7 +30493,8 @@ static int ZEND_FASTCALL zend_pre_incdec_property_helper_SPEC_UNUSED_VAR(incdec_
 	if (Z_OBJ_HT_P(object)->get_property_ptr_ptr) {
 		zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_VAR == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 		if (zptr != NULL) { 			/* NULL means no success in getting PTR */
-			SEPARATE_ZVAL_IF_NOT_REF(zptr);
+			ZVAL_DEREF(zptr);
+			SEPARATE_ZVAL_NOREF(zptr);
 
 			have_get_ptr = 1;
 			incdec_op(zptr);
@@ -30607,12 +30587,11 @@ static int ZEND_FASTCALL zend_post_incdec_property_helper_SPEC_UNUSED_VAR(incdec
 		zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_VAR == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 		if (zptr != NULL) { 			/* NULL means no success in getting PTR */
 			have_get_ptr = 1;
-			SEPARATE_ZVAL_IF_NOT_REF(zptr);
+			ZVAL_DEREF(zptr);
+			ZVAL_COPY(retval, zptr);
 
-			ZVAL_DUP(retval, zptr);
-
+			SEPARATE_ZVAL_NOREF(zptr);
 			incdec_op(zptr);
-
 		}
 	}
 
@@ -31447,7 +31426,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_UNUSED_UNUSED(int
 		object = make_real_object(object TSRMLS_CC);
 	}
 
-	value = get_zval_ptr((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
+	value = get_zval_ptr_deref((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
 
 	if (IS_UNUSED != IS_UNUSED && UNEXPECTED(Z_TYPE_P(object) != IS_OBJECT)) {
 		zend_error(E_WARNING, "Attempt to assign property of non-object");
@@ -31546,7 +31525,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_dim_helper_SPEC_UNUSED_UNUSED(int
 		zval *dim = NULL;
 
 		zend_fetch_dimension_address_RW(EX_VAR((opline+1)->op2.var), container, dim, IS_UNUSED TSRMLS_CC);
-		value = get_zval_ptr((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
+		value = get_zval_ptr_deref((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
 		var_ptr = _get_zval_ptr_ptr_var((opline+1)->op2.var, execute_data, &free_op_data2 TSRMLS_CC);
 	}
 
@@ -31966,7 +31945,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_UNUSED_CV(int (*b
 		object = make_real_object(object TSRMLS_CC);
 	}
 
-	value = get_zval_ptr((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
+	value = get_zval_ptr_deref((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
 
 	if (IS_UNUSED != IS_UNUSED && UNEXPECTED(Z_TYPE_P(object) != IS_OBJECT)) {
 		zend_error(E_WARNING, "Attempt to assign property of non-object");
@@ -32065,7 +32044,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_dim_helper_SPEC_UNUSED_CV(int (*b
 		zval *dim = _get_zval_ptr_cv_deref_BP_VAR_R(execute_data, opline->op2.var TSRMLS_CC);
 
 		zend_fetch_dimension_address_RW(EX_VAR((opline+1)->op2.var), container, dim, IS_CV TSRMLS_CC);
-		value = get_zval_ptr((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
+		value = get_zval_ptr_deref((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
 		var_ptr = _get_zval_ptr_ptr_var((opline+1)->op2.var, execute_data, &free_op_data2 TSRMLS_CC);
 	}
 
@@ -32118,7 +32097,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_helper_SPEC_UNUSED_CV(int (*binar
 	zval *value;
 
 	SAVE_OPLINE();
-	value = _get_zval_ptr_cv_BP_VAR_R(execute_data, opline->op2.var TSRMLS_CC);
+	value = _get_zval_ptr_cv_deref_BP_VAR_R(execute_data, opline->op2.var TSRMLS_CC);
 	var_ptr = NULL;
 
 	if (IS_UNUSED == IS_VAR && UNEXPECTED(var_ptr == NULL)) {
@@ -32340,7 +32319,8 @@ static int ZEND_FASTCALL zend_pre_incdec_property_helper_SPEC_UNUSED_CV(incdec_t
 	if (Z_OBJ_HT_P(object)->get_property_ptr_ptr) {
 		zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_CV == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 		if (zptr != NULL) { 			/* NULL means no success in getting PTR */
-			SEPARATE_ZVAL_IF_NOT_REF(zptr);
+			ZVAL_DEREF(zptr);
+			SEPARATE_ZVAL_NOREF(zptr);
 
 			have_get_ptr = 1;
 			incdec_op(zptr);
@@ -32432,12 +32412,11 @@ static int ZEND_FASTCALL zend_post_incdec_property_helper_SPEC_UNUSED_CV(incdec_
 		zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_CV == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 		if (zptr != NULL) { 			/* NULL means no success in getting PTR */
 			have_get_ptr = 1;
-			SEPARATE_ZVAL_IF_NOT_REF(zptr);
+			ZVAL_DEREF(zptr);
+			ZVAL_COPY(retval, zptr);
 
-			ZVAL_DUP(retval, zptr);
-
+			SEPARATE_ZVAL_NOREF(zptr);
 			incdec_op(zptr);
-
 		}
 	}
 
@@ -34080,15 +34059,13 @@ static int ZEND_FASTCALL  ZEND_CAST_SPEC_CV_HANDLER(ZEND_OPCODE_HANDLER_ARGS)
 							if (UNEXPECTED(Z_OPT_COPYABLE_P(expr))) {
 								zval_copy_ctor_func(expr);
 							}
-						} else if (IS_CV != IS_TMP_VAR) {
+						} else {
 							if (Z_OPT_REFCOUNTED_P(expr)) Z_ADDREF_P(expr);
 						}
 					}
 				} else {
 					ZVAL_COPY_VALUE(result, expr);
-					if (IS_CV != IS_TMP_VAR) {
-						zval_opt_copy_ctor(result);
-					}
+					Z_ADDREF_P(result);
 					convert_to_array(result);
 				}
 			} else {
@@ -34100,21 +34077,16 @@ static int ZEND_FASTCALL  ZEND_CAST_SPEC_CV_HANDLER(ZEND_OPCODE_HANDLER_ARGS)
 							if (UNEXPECTED(Z_OPT_COPYABLE_P(expr))) {
 								zval_copy_ctor_func(expr);
 							}
-						} else if (IS_CV != IS_TMP_VAR) {
+						} else {
 							if (Z_OPT_REFCOUNTED_P(expr)) Z_ADDREF_P(expr);
 						}
 					}
 				} else {
 					ZVAL_COPY_VALUE(result, expr);
-					if (IS_CV != IS_TMP_VAR) {
-						zval_opt_copy_ctor(result);
-					}
+					zval_opt_copy_ctor(result);
 					convert_to_object(result);
 				}
 			}
-
-			CHECK_EXCEPTION();
-			ZEND_VM_NEXT_OPCODE();
 	}
 
 	CHECK_EXCEPTION();
@@ -34947,7 +34919,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_CV_CONST(int (*bi
 		object = make_real_object(object TSRMLS_CC);
 	}
 
-	value = get_zval_ptr((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
+	value = get_zval_ptr_deref((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
 
 	if (IS_CV != IS_UNUSED && UNEXPECTED(Z_TYPE_P(object) != IS_OBJECT)) {
 		zend_error(E_WARNING, "Attempt to assign property of non-object");
@@ -35046,7 +35018,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_dim_helper_SPEC_CV_CONST(int (*bi
 		zval *dim = opline->op2.zv;
 
 		zend_fetch_dimension_address_RW(EX_VAR((opline+1)->op2.var), container, dim, IS_CONST TSRMLS_CC);
-		value = get_zval_ptr((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
+		value = get_zval_ptr_deref((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
 		var_ptr = _get_zval_ptr_ptr_var((opline+1)->op2.var, execute_data, &free_op_data2 TSRMLS_CC);
 	}
 
@@ -35321,7 +35293,8 @@ static int ZEND_FASTCALL zend_pre_incdec_property_helper_SPEC_CV_CONST(incdec_t 
 	if (Z_OBJ_HT_P(object)->get_property_ptr_ptr) {
 		zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_CONST == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 		if (zptr != NULL) { 			/* NULL means no success in getting PTR */
-			SEPARATE_ZVAL_IF_NOT_REF(zptr);
+			ZVAL_DEREF(zptr);
+			SEPARATE_ZVAL_NOREF(zptr);
 
 			have_get_ptr = 1;
 			incdec_op(zptr);
@@ -35413,12 +35386,11 @@ static int ZEND_FASTCALL zend_post_incdec_property_helper_SPEC_CV_CONST(incdec_t
 		zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_CONST == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 		if (zptr != NULL) { 			/* NULL means no success in getting PTR */
 			have_get_ptr = 1;
-			SEPARATE_ZVAL_IF_NOT_REF(zptr);
+			ZVAL_DEREF(zptr);
+			ZVAL_COPY(retval, zptr);
 
-			ZVAL_DUP(retval, zptr);
-
+			SEPARATE_ZVAL_NOREF(zptr);
 			incdec_op(zptr);
-
 		}
 	}
 
@@ -37217,7 +37189,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_CV_TMP(int (*bina
 		object = make_real_object(object TSRMLS_CC);
 	}
 
-	value = get_zval_ptr((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
+	value = get_zval_ptr_deref((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
 
 	if (IS_CV != IS_UNUSED && UNEXPECTED(Z_TYPE_P(object) != IS_OBJECT)) {
 		zend_error(E_WARNING, "Attempt to assign property of non-object");
@@ -37317,7 +37289,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_dim_helper_SPEC_CV_TMP(int (*bina
 		zval *dim = _get_zval_ptr_tmp(opline->op2.var, execute_data, &free_op2 TSRMLS_CC);
 
 		zend_fetch_dimension_address_RW(EX_VAR((opline+1)->op2.var), container, dim, IS_TMP_VAR TSRMLS_CC);
-		value = get_zval_ptr((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
+		value = get_zval_ptr_deref((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
 		var_ptr = _get_zval_ptr_ptr_var((opline+1)->op2.var, execute_data, &free_op_data2 TSRMLS_CC);
 	}
 
@@ -37592,7 +37564,8 @@ static int ZEND_FASTCALL zend_pre_incdec_property_helper_SPEC_CV_TMP(incdec_t in
 	if (Z_OBJ_HT_P(object)->get_property_ptr_ptr) {
 		zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_TMP_VAR == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 		if (zptr != NULL) { 			/* NULL means no success in getting PTR */
-			SEPARATE_ZVAL_IF_NOT_REF(zptr);
+			ZVAL_DEREF(zptr);
+			SEPARATE_ZVAL_NOREF(zptr);
 
 			have_get_ptr = 1;
 			incdec_op(zptr);
@@ -37685,12 +37658,11 @@ static int ZEND_FASTCALL zend_post_incdec_property_helper_SPEC_CV_TMP(incdec_t i
 		zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_TMP_VAR == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 		if (zptr != NULL) { 			/* NULL means no success in getting PTR */
 			have_get_ptr = 1;
-			SEPARATE_ZVAL_IF_NOT_REF(zptr);
+			ZVAL_DEREF(zptr);
+			ZVAL_COPY(retval, zptr);
 
-			ZVAL_DUP(retval, zptr);
-
+			SEPARATE_ZVAL_NOREF(zptr);
 			incdec_op(zptr);
-
 		}
 	}
 
@@ -39101,7 +39073,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_CV_VAR(int (*bina
 		object = make_real_object(object TSRMLS_CC);
 	}
 
-	value = get_zval_ptr((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
+	value = get_zval_ptr_deref((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
 
 	if (IS_CV != IS_UNUSED && UNEXPECTED(Z_TYPE_P(object) != IS_OBJECT)) {
 		zend_error(E_WARNING, "Attempt to assign property of non-object");
@@ -39201,7 +39173,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_dim_helper_SPEC_CV_VAR(int (*bina
 		zval *dim = _get_zval_ptr_var_deref(opline->op2.var, execute_data, &free_op2 TSRMLS_CC);
 
 		zend_fetch_dimension_address_RW(EX_VAR((opline+1)->op2.var), container, dim, IS_VAR TSRMLS_CC);
-		value = get_zval_ptr((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
+		value = get_zval_ptr_deref((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
 		var_ptr = _get_zval_ptr_ptr_var((opline+1)->op2.var, execute_data, &free_op_data2 TSRMLS_CC);
 	}
 
@@ -39254,7 +39226,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_helper_SPEC_CV_VAR(int (*binary_o
 	zval *value;
 
 	SAVE_OPLINE();
-	value = _get_zval_ptr_var(opline->op2.var, execute_data, &free_op2 TSRMLS_CC);
+	value = _get_zval_ptr_var_deref(opline->op2.var, execute_data, &free_op2 TSRMLS_CC);
 	var_ptr = _get_zval_ptr_cv_BP_VAR_RW(execute_data, opline->op1.var TSRMLS_CC);
 
 	if (IS_CV == IS_VAR && UNEXPECTED(var_ptr == NULL)) {
@@ -39476,7 +39448,8 @@ static int ZEND_FASTCALL zend_pre_incdec_property_helper_SPEC_CV_VAR(incdec_t in
 	if (Z_OBJ_HT_P(object)->get_property_ptr_ptr) {
 		zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_VAR == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 		if (zptr != NULL) { 			/* NULL means no success in getting PTR */
-			SEPARATE_ZVAL_IF_NOT_REF(zptr);
+			ZVAL_DEREF(zptr);
+			SEPARATE_ZVAL_NOREF(zptr);
 
 			have_get_ptr = 1;
 			incdec_op(zptr);
@@ -39569,12 +39542,11 @@ static int ZEND_FASTCALL zend_post_incdec_property_helper_SPEC_CV_VAR(incdec_t i
 		zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_VAR == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 		if (zptr != NULL) { 			/* NULL means no success in getting PTR */
 			have_get_ptr = 1;
-			SEPARATE_ZVAL_IF_NOT_REF(zptr);
+			ZVAL_DEREF(zptr);
+			ZVAL_COPY(retval, zptr);
 
-			ZVAL_DUP(retval, zptr);
-
+			SEPARATE_ZVAL_NOREF(zptr);
 			incdec_op(zptr);
-
 		}
 	}
 
@@ -41078,7 +41050,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_CV_UNUSED(int (*b
 		object = make_real_object(object TSRMLS_CC);
 	}
 
-	value = get_zval_ptr((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
+	value = get_zval_ptr_deref((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
 
 	if (IS_CV != IS_UNUSED && UNEXPECTED(Z_TYPE_P(object) != IS_OBJECT)) {
 		zend_error(E_WARNING, "Attempt to assign property of non-object");
@@ -41177,7 +41149,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_dim_helper_SPEC_CV_UNUSED(int (*b
 		zval *dim = NULL;
 
 		zend_fetch_dimension_address_RW(EX_VAR((opline+1)->op2.var), container, dim, IS_UNUSED TSRMLS_CC);
-		value = get_zval_ptr((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
+		value = get_zval_ptr_deref((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
 		var_ptr = _get_zval_ptr_ptr_var((opline+1)->op2.var, execute_data, &free_op_data2 TSRMLS_CC);
 	}
 
@@ -42407,7 +42379,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_CV_CV(int (*binar
 		object = make_real_object(object TSRMLS_CC);
 	}
 
-	value = get_zval_ptr((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
+	value = get_zval_ptr_deref((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
 
 	if (IS_CV != IS_UNUSED && UNEXPECTED(Z_TYPE_P(object) != IS_OBJECT)) {
 		zend_error(E_WARNING, "Attempt to assign property of non-object");
@@ -42506,7 +42478,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_dim_helper_SPEC_CV_CV(int (*binar
 		zval *dim = _get_zval_ptr_cv_deref_BP_VAR_R(execute_data, opline->op2.var TSRMLS_CC);
 
 		zend_fetch_dimension_address_RW(EX_VAR((opline+1)->op2.var), container, dim, IS_CV TSRMLS_CC);
-		value = get_zval_ptr((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
+		value = get_zval_ptr_deref((opline+1)->op1_type, &(opline+1)->op1, execute_data, &free_op_data1, BP_VAR_R);
 		var_ptr = _get_zval_ptr_ptr_var((opline+1)->op2.var, execute_data, &free_op_data2 TSRMLS_CC);
 	}
 
@@ -42559,7 +42531,7 @@ static int ZEND_FASTCALL zend_binary_assign_op_helper_SPEC_CV_CV(int (*binary_op
 	zval *value;
 
 	SAVE_OPLINE();
-	value = _get_zval_ptr_cv_BP_VAR_R(execute_data, opline->op2.var TSRMLS_CC);
+	value = _get_zval_ptr_cv_deref_BP_VAR_R(execute_data, opline->op2.var TSRMLS_CC);
 	var_ptr = _get_zval_ptr_cv_BP_VAR_RW(execute_data, opline->op1.var TSRMLS_CC);
 
 	if (IS_CV == IS_VAR && UNEXPECTED(var_ptr == NULL)) {
@@ -42781,7 +42753,8 @@ static int ZEND_FASTCALL zend_pre_incdec_property_helper_SPEC_CV_CV(incdec_t inc
 	if (Z_OBJ_HT_P(object)->get_property_ptr_ptr) {
 		zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_CV == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 		if (zptr != NULL) { 			/* NULL means no success in getting PTR */
-			SEPARATE_ZVAL_IF_NOT_REF(zptr);
+			ZVAL_DEREF(zptr);
+			SEPARATE_ZVAL_NOREF(zptr);
 
 			have_get_ptr = 1;
 			incdec_op(zptr);
@@ -42873,12 +42846,11 @@ static int ZEND_FASTCALL zend_post_incdec_property_helper_SPEC_CV_CV(incdec_t in
 		zval *zptr = Z_OBJ_HT_P(object)->get_property_ptr_ptr(object, property, BP_VAR_RW, ((IS_CV == IS_CONST) ? (EX(run_time_cache) + Z_CACHE_SLOT_P(property)) : NULL) TSRMLS_CC);
 		if (zptr != NULL) { 			/* NULL means no success in getting PTR */
 			have_get_ptr = 1;
-			SEPARATE_ZVAL_IF_NOT_REF(zptr);
+			ZVAL_DEREF(zptr);
+			ZVAL_COPY(retval, zptr);
 
-			ZVAL_DUP(retval, zptr);
-
+			SEPARATE_ZVAL_NOREF(zptr);
 			incdec_op(zptr);
-
 		}
 	}
 
