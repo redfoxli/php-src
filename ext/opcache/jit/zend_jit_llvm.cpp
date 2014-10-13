@@ -6829,9 +6829,11 @@ static void zend_jit_assign_to_object(zend_llvm_ctx     &llvm_ctx,
 		PHI_ADD(real_val, value);
 		zend_jit_unexpected_br(
 				llvm_ctx,
-				llvm_ctx.builder.CreateICmpEQ(
-					val_info,
-					llvm_ctx.builder.getInt32((IS_TYPE_COPYABLE) << Z_TYPE_FLAGS_SHIFT)),
+				llvm_ctx.builder.CreateICmpNE(
+					llvm_ctx.builder.CreateAnd(
+						val_info,
+						llvm_ctx.builder.getInt32((IS_TYPE_COPYABLE) << Z_TYPE_FLAGS_SHIFT)),
+					llvm_ctx.builder.getInt32(0)),
 				bb_copy,
 				bb_cont);
 		llvm_ctx.builder.SetInsertPoint(bb_copy);
@@ -6850,7 +6852,7 @@ static void zend_jit_assign_to_object(zend_llvm_ctx     &llvm_ctx,
 		llvm_ctx.builder.CreateBr(bb_cont);
 		llvm_ctx.builder.SetInsertPoint(bb_cont);
 		PHI_SET(real_val, value, llvm_ctx.zval_ptr_type);
-	} else {
+	} else if ((opline + 1)->op1_type == IS_VAR) {
 		zend_jit_try_addref(llvm_ctx, value, NULL, (opline + 1)->op1_type, (opline + 1)->op1, OP1_DATA_INFO());
 	}
 
@@ -6971,6 +6973,7 @@ static void zend_jit_assign_to_object(zend_llvm_ctx     &llvm_ctx,
 		zend_jit_try_addref(llvm_ctx, result, NULL, (opline + 1)->op1_type, (opline + 1)->op1, OP1_DATA_INFO());
 	}
 
+	zend_jit_zval_ptr_dtor_ex(llvm_ctx, value, NULL, OP1_DATA_INFO(), opline->lineno, 1);
 	if ((opline + 1)->op1_type == IS_VAR) {
 		if (!zend_jit_free_operand(llvm_ctx,
 					(opline + 1)->op1_type, value, NULL, OP1_DATA_INFO(), opline->lineno)) {
