@@ -4234,7 +4234,7 @@ static zend_class_entry* zend_jit_load_operand_scope(zend_llvm_ctx    &llvm_ctx,
 	zend_class_entry *scope = NULL;
 
 	if (op_type == IS_UNUSED && op_array->scope) {
-		zend_string *lcname = zend_string_dup(op_array->scope->name, 0);
+		zend_string *lcname = zend_string_init(op_array->scope->name->val, op_array->scope->name->len, 0);
 		zend_str_tolower(lcname->val, lcname->len);
 		if (zend_hash_exists(EG(class_table), lcname)
 			   	|| (ctx->main_persistent_script->class_table.nNumOfElements 
