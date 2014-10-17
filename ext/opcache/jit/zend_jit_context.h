@@ -430,11 +430,13 @@ DEFINE_SSA_OP_INFO(op2)
 #define OP2_DEF_MAY_BE(t)  (OP2_DEF_INFO() & (t))
 #define RES_MAY_BE(t)      (RES_INFO() & (t))
 
-#define OP1_OP()           (opline->op1)
-#define OP2_OP()           (opline->op2)
-#define RES_OP()           (opline->result)
+#define OP1_OP()           (&(opline->op1))
+#define OP2_OP()           (&(opline->op2))
+#define OP1_DATA_OP()      (&((opline + 1)->op1))
+#define RES_OP()           (&(opline->result))
 #define OP1_OP_TYPE()      (opline->op1_type)
 #define OP2_OP_TYPE()      (opline->op2_type)
+#define OP1_DATA_OP_TYPE() ((opline + 1)->op1_type)
 
 #define DEFINE_SSA_OP_HAS_RANGE(opN) \
 	static inline long ssa_##opN##_has_range(zend_op_array *op_array, zend_op *opline) \
