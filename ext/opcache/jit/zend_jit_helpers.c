@@ -311,6 +311,50 @@ ZEND_FASTCALL void zend_jit_helper_assign_to_string_offset(zval *str, zend_long 
 	}
 }
 
+ZEND_FASTCALL zval* zend_jit_obj_proxy_add(zval *var_ptr, zval *value) {
+	/* proxy object */
+	zval rv;
+	zval *objval = Z_OBJ_HANDLER_P(var_ptr, get)(var_ptr, &rv TSRMLS_CC);
+	Z_ADDREF_P(objval);
+	add_function(objval, objval, value TSRMLS_CC);
+	Z_OBJ_HANDLER_P(var_ptr, set)(var_ptr, objval TSRMLS_CC);
+	zval_ptr_dtor(objval);
+	return var_ptr;
+}
+
+ZEND_FASTCALL zval* zend_jit_obj_proxy_sub(zval *var_ptr, zval *value) {
+	/* proxy object */
+	zval rv;
+	zval *objval = Z_OBJ_HANDLER_P(var_ptr, get)(var_ptr, &rv TSRMLS_CC);
+	Z_ADDREF_P(objval);
+	sub_function(objval, objval, value TSRMLS_CC);
+	Z_OBJ_HANDLER_P(var_ptr, set)(var_ptr, objval TSRMLS_CC);
+	zval_ptr_dtor(objval);
+	return var_ptr;
+}
+
+ZEND_FASTCALL zval* zend_jit_obj_proxy_mul(zval *var_ptr, zval *value) {
+	/* proxy object */
+	zval rv;
+	zval *objval = Z_OBJ_HANDLER_P(var_ptr, get)(var_ptr, &rv TSRMLS_CC);
+	Z_ADDREF_P(objval);
+	mul_function(objval, objval, value TSRMLS_CC);
+	Z_OBJ_HANDLER_P(var_ptr, set)(var_ptr, objval TSRMLS_CC);
+	zval_ptr_dtor(objval);
+	return var_ptr;
+}
+
+ZEND_FASTCALL zval* zend_jit_obj_proxy_div(zval *var_ptr, zval *value) {
+	/* proxy object */
+	zval rv;
+	zval *objval = Z_OBJ_HANDLER_P(var_ptr, get)(var_ptr, &rv TSRMLS_CC);
+	Z_ADDREF_P(objval);
+	div_function(objval, objval, value TSRMLS_CC);
+	Z_OBJ_HANDLER_P(var_ptr, set)(var_ptr, objval TSRMLS_CC);
+	zval_ptr_dtor(objval);
+	return var_ptr;
+}
+
 /*
  * Local variables:
  * tab-width: 4
