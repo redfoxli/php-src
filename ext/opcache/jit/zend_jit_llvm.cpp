@@ -6051,10 +6051,10 @@ static Value* zend_jit_fetch_dimension_address(zend_llvm_ctx     &llvm_ctx,
 				bb_follow = NULL;
 			}
 
+			if (!bb_convert_to_array) {
+				bb_convert_to_array = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+			}
 			if ((container_info & (MAY_BE_ANY - (MAY_BE_FALSE|MAY_BE_NULL|MAY_BE_ARRAY|MAY_BE_OBJECT|MAY_BE_STRING)))) {
-				if (!bb_convert_to_array) {
-					bb_convert_to_array = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
-				}
 				bb_follow = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 
 				if (!container_type) {
@@ -6067,6 +6067,8 @@ static Value* zend_jit_fetch_dimension_address(zend_llvm_ctx     &llvm_ctx,
 							llvm_ctx.builder.getInt8(IS_FALSE)),
 						bb_convert_to_array,
 						bb_follow);
+			} else {
+				llvm_ctx.builder.CreateBr(bb_convert_to_array);
 			}
 		}
 	}
@@ -6089,6 +6091,7 @@ static Value* zend_jit_fetch_dimension_address(zend_llvm_ctx     &llvm_ctx,
 			if (!*bb_uninitialized) {
 				*bb_uninitialized = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 			}
+			llvm_ctx.builder.CreateBr(*bb_uninitialized);
 		} else {
 			zend_jit_error(
 					llvm_ctx,
