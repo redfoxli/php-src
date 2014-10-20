@@ -11666,14 +11666,14 @@ static int zend_jit_assign_op(zend_llvm_ctx     &llvm_ctx,
 
 					if (ret) {
 						do_assign = 1;
+						var_ptr = ret;
+						var_info = array_element_type(OP1_INFO(), 1, OP2_OP_TYPE() == IS_UNUSED) & ~MAY_BE_ERROR;
+						var_ssa_var = -1;
 						if (bb_new_element) {
 							PHI_ADD(var_ptr, ret);
 							bb_merge_value = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 							llvm_ctx.builder.CreateBr(bb_merge_value);
 						} else {
-							var_ptr = ret;
-							var_info = array_element_type(OP1_INFO(), 1, OP2_OP_TYPE() == IS_UNUSED) & ~MAY_BE_ERROR;
-							var_ssa_var = -1;
 							if (!bb_follow) {
 								bb_follow = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 							}
