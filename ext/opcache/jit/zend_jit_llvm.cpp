@@ -5636,6 +5636,9 @@ static Value* zend_jit_fetch_dimension_address_read(zend_llvm_ctx     &llvm_ctx,
 			llvm_ctx.builder.SetInsertPoint(bb_follow);
 		}
 		PHI_ADD(ret, llvm_ctx._EG_uninitialized_zval);
+		if (!bb_finish) {
+			bb_finish = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+		}
 		llvm_ctx.builder.CreateBr(bb_finish);
 	}
 
