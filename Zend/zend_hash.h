@@ -32,6 +32,7 @@
 #define HASH_ADD				(1<<1)
 #define HASH_UPDATE_INDIRECT	(1<<2)
 #define HASH_ADD_NEW			(1<<3)
+#define HASH_ADD_NEXT			(1<<4)
 
 #define INVALID_IDX ((uint32_t) -1)
 
@@ -170,9 +171,10 @@ ZEND_API void zend_hash_internal_pointer_reset_ex(HashTable *ht, HashPosition *p
 ZEND_API void zend_hash_internal_pointer_end_ex(HashTable *ht, HashPosition *pos);
 
 typedef struct _HashPointer {
-	HashPosition pos;
-	HashTable *ht;
-	zend_ulong h;
+	HashPosition  pos;
+	HashTable    *ht;
+	zend_ulong    h;
+	zend_string  *key;
 } HashPointer;
 
 #define zend_hash_has_more_elements(ht) \
