@@ -355,6 +355,17 @@ ZEND_FASTCALL zval* zend_jit_obj_proxy_div(zval *var_ptr, zval *value) {
 	return var_ptr;
 }
 
+ZEND_FASTCALL zval* zend_jit_obj_proxy_concat(zval *var_ptr, zval *value) {
+	/* proxy object */
+	zval rv;
+	zval *objval = Z_OBJ_HANDLER_P(var_ptr, get)(var_ptr, &rv TSRMLS_CC);
+	Z_ADDREF_P(objval);
+	concat_function(objval, objval, value TSRMLS_CC);
+	Z_OBJ_HANDLER_P(var_ptr, set)(var_ptr, objval TSRMLS_CC);
+	zval_ptr_dtor(objval);
+	return var_ptr;
+}
+
 /*
  * Local variables:
  * tab-width: 4
