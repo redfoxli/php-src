@@ -13454,6 +13454,7 @@ static int zend_jit_do_fcall(zend_llvm_ctx    &llvm_ctx,
 {
 	zend_jit_func_info *info = JIT_DATA(op_array);
 	zend_jit_call_info *call_info = info->callee_info;
+	zend_jit_func_info *func_info = NULL;
 	zend_function *func = NULL;
 	Value *func_addr = NULL;
 	BasicBlock *bb_fcall_end_scope = NULL;
@@ -13466,6 +13467,9 @@ static int zend_jit_do_fcall(zend_llvm_ctx    &llvm_ctx,
 	if (call_info) {
 		if (call_info->callee_func) {
 			func = call_info->callee_func;
+			if (func && func->type == ZEND_USER_FUNCTION) {
+				func_info = JIT_DATA(&func->op_array);
+			}
 		}
 	}
 	uint32_t num_args = zend_jit_find_num_args(op_array, opline);
@@ -14019,19 +14023,33 @@ static int zend_jit_do_fcall(zend_llvm_ctx    &llvm_ctx,
 					PointerType::getUnqual(llvm_ctx.zend_object_type));
 			zend_jit_init_func_execute_data(llvm_ctx, call, obj, func, func_addr, return_value, num_args, opline->lineno);
 
-			//JIT: zend_execute_ex(call TSRMLS_CC);
-			Function *_helper = zend_jit_get_helper(
-				llvm_ctx,
-				(void*)orig_execute_ex,
-				ZEND_JIT_SYM("execute_ex"),
-				0,
-				Type::getVoidTy(llvm_ctx.context),
-				PointerType::getUnqual(llvm_ctx.zend_execute_data_type),
-				NULL,
-				NULL,
-				NULL,
-				NULL);
-			llvm_ctx.builder.CreateCall(_helper, call);
+			if (ZEND_LLVM_MODULE_AT_ONCE &&
+			    func_info &&
+			    (func_info->flags & ZEND_JIT_FUNC_MAY_COMPILE)) {
+//???				if (func_info->flags & ZEND_JIT_FUNC_INLINE) {
+//???					if (!zend_jit_inline(ctx, llvm_ctx, &func->op_array, opline, ex)) {
+//???						return 0;
+//???					}
+//???				} else {
+					Function *_helper = zend_jit_get_func(llvm_ctx, ctx, &func->op_array, func_info);
+					CallInst *inst = llvm_ctx.builder.CreateCall(_helper, call);
+					inst->setCallingConv(CallingConv::X86_FastCall);
+//???				}
+			} else {
+				//JIT: zend_execute_ex(call TSRMLS_CC);
+				Function *_helper = zend_jit_get_helper(
+					llvm_ctx,
+					(void*)orig_execute_ex,
+					ZEND_JIT_SYM("execute_ex"),
+					0,
+					Type::getVoidTy(llvm_ctx.context),
+					PointerType::getUnqual(llvm_ctx.zend_execute_data_type),
+					NULL,
+					NULL,
+					NULL,
+					NULL);
+				llvm_ctx.builder.CreateCall(_helper, call);
+			}
 
 			if (!bb_fcall_end_scope) {
 				bb_fcall_end_scope = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
