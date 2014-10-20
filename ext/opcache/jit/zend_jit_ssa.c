@@ -495,6 +495,7 @@ void zend_jit_dump_ssa_line(zend_op_array *op_array, uint32_t line)
 #define OP2_ADDR (1<<4)
 #define OP1_NUM  (1<<5)
 #define OP2_NUM  (1<<6)
+#define EXT_REL_LINE (1<<7)
 	static const zend_jit_op_desc op_desc[] = {
 		{"NOP",                             0},
 		{"ADD",                             0},
@@ -541,7 +542,7 @@ void zend_jit_dump_ssa_line(zend_op_array *op_array, uint32_t line)
 		{"JMP",                             OP1_ADDR},
 		{"JMPZ",                            OP2_ADDR},
 		{"JMPNZ",                           OP2_ADDR},
-		{"JMPZNZ",                          EXT_LINE | OP2_LINE},
+		{"JMPZNZ",                          EXT_REL_LINE | OP2_ADDR},
 		{"JMPZ_EX",                         OP2_ADDR},
 		{"JMPNZ_EX",                        OP2_ADDR},
 		{"CASE",                            0},
@@ -749,6 +750,12 @@ void zend_jit_dump_ssa_line(zend_op_array *op_array, uint32_t line)
 			fprintf(stderr, " BB%d", block_map[opline->extended_value]);
 		} else {
 			fprintf(stderr, " .OP_" ZEND_LONG_FMT, opline->extended_value);
+		}
+	} else if (EXT_REL_LINE & op_desc[opline->opcode].flags) {
+		if (block_map) {
+			fprintf(stderr, " BB%d", block_map[(zend_op*)(((char*)opline) + opline->extended_value) - op_array->opcodes]);
+		} else {
+			fprintf(stderr, " .OP_" ZEND_LONG_FMT, (zend_op*)(((char*)opline) + opline->extended_value) - op_array->opcodes);
 		}
 	}
 	fprintf(stderr, "\n");
