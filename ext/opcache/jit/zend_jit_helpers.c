@@ -91,7 +91,7 @@ ZEND_FASTCALL zend_ulong zend_jit_helper_slow_str_index(zval *dim, uint32_t type
 	return zval_get_long(dim);
 }
 
-ZEND_FASTCALL void zend_jit_helper_check_type_hint(zend_function *zf, uint32_t arg_num, zval *arg, zend_ulong fetch_type) {
+ZEND_FASTCALL void zend_jit_helper_check_type_hint(zend_function *zf, uint32_t arg_num, zval *arg) {
 	zend_arg_info *cur_arg_info;
 	char *need_msg;
 	zend_class_entry *ce;
@@ -113,12 +113,12 @@ ZEND_FASTCALL void zend_jit_helper_check_type_hint(zend_function *zf, uint32_t a
 
 		ZVAL_DEREF(arg);
 		if (Z_TYPE_P(arg) == IS_OBJECT) {
-			need_msg = zend_verify_arg_class_kind(cur_arg_info, fetch_type, &class_name, &ce TSRMLS_CC);
+			need_msg = zend_verify_arg_class_kind(cur_arg_info, &class_name, &ce TSRMLS_CC);
 			if (!ce || !instanceof_function(Z_OBJCE_P(arg), ce TSRMLS_CC)) {
 				zend_verify_arg_error(E_RECOVERABLE_ERROR, zf, arg_num, need_msg, class_name, "instance of ", Z_OBJCE_P(arg)->name->val, arg TSRMLS_CC);
 			}
 		} else if (Z_TYPE_P(arg) != IS_NULL || !cur_arg_info->allow_null) {
-			need_msg = zend_verify_arg_class_kind(cur_arg_info, fetch_type, &class_name, &ce TSRMLS_CC);
+			need_msg = zend_verify_arg_class_kind(cur_arg_info, &class_name, &ce TSRMLS_CC);
 			zend_verify_arg_error(E_RECOVERABLE_ERROR, zf, arg_num, need_msg, class_name, zend_zval_type_name(arg), "", arg TSRMLS_CC);
 		}
 	} else if (cur_arg_info->type_hint) {
@@ -139,7 +139,7 @@ ZEND_FASTCALL void zend_jit_helper_check_type_hint(zend_function *zf, uint32_t a
 	}
 }
 
-static inline int zend_verify_missing_arg_type(zend_function *zf, uint32_t arg_num, zend_ulong fetch_type TSRMLS_DC)
+static inline int zend_verify_missing_arg_type(zend_function *zf, uint32_t arg_num TSRMLS_DC)
 {
 	zend_arg_info *cur_arg_info;
 	char *need_msg;
@@ -160,7 +160,7 @@ static inline int zend_verify_missing_arg_type(zend_function *zf, uint32_t arg_n
 	if (cur_arg_info->class_name) {
 		char *class_name;
 
-		need_msg = zend_verify_arg_class_kind(cur_arg_info, fetch_type, &class_name, &ce TSRMLS_CC);
+		need_msg = zend_verify_arg_class_kind(cur_arg_info, &class_name, &ce TSRMLS_CC);
 		zend_verify_arg_error(E_RECOVERABLE_ERROR, zf, arg_num, need_msg, class_name, "none", "", NULL TSRMLS_CC);
 		return 0;
 	} else if (cur_arg_info->type_hint) {
@@ -181,7 +181,7 @@ static inline int zend_verify_missing_arg_type(zend_function *zf, uint32_t arg_n
 ZEND_FASTCALL void zend_jit_helper_check_missing_arg(zend_execute_data *execute_data, uint32_t arg_num)
 {
 	if (EXPECTED(!(EX(func)->common.fn_flags & ZEND_ACC_HAS_TYPE_HINTS)) ||
-	    zend_verify_missing_arg_type(EX(func), arg_num, EX(opline)->extended_value TSRMLS_CC)) {
+	    zend_verify_missing_arg_type(EX(func), arg_num TSRMLS_CC)) {
 		const char *class_name = EX(func)->common.scope ? EX(func)->common.scope->name->val : "";
 		const char *space = EX(func)->common.scope ? "::" : "";
 		const char *func_name = EX(func)->common.function_name ? EX(func)->common.function_name->val : "main";

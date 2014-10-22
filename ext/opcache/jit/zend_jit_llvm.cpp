@@ -13296,8 +13296,7 @@ static int zend_jit_set_retref_flag(zend_llvm_ctx    &llvm_ctx,
 static int zend_jit_check_type_hint(zend_llvm_ctx    &llvm_ctx,
                                     Value            *func,
                                     Value            *arg_num,
-                                    Value            *arg,
-                                    Value            *fetch_type)
+                                    Value            *arg)
 {
 	Function *_helper = zend_jit_get_helper(
 			llvm_ctx,
@@ -13308,11 +13307,11 @@ static int zend_jit_check_type_hint(zend_llvm_ctx    &llvm_ctx,
 			PointerType::getUnqual(llvm_ctx.zend_function_type),
 			Type::getInt32Ty(llvm_ctx.context),
 			llvm_ctx.zval_ptr_type,
-			LLVM_GET_LONG_TY(llvm_ctx.context),
+			NULL,
 			NULL);
 
-	CallInst *call = llvm_ctx.builder.CreateCall4(_helper,
-		func, arg_num, arg, fetch_type);
+	CallInst *call = llvm_ctx.builder.CreateCall3(_helper,
+		func, arg_num, arg);
 	call->setCallingConv(CallingConv::X86_FastCall);
 	return 1;
 }
@@ -13397,8 +13396,7 @@ static int zend_jit_check_type_hints(zend_llvm_ctx    &llvm_ctx,
 							llvm_ctx,
 							call,
 							(ZEND_CALL_FRAME_SLOT + i) * sizeof(zval),
-							llvm_ctx.zval_ptr_type),
-						LLVM_GET_LONG(0));
+							llvm_ctx.zval_ptr_type));
 				}
 			}
 		} else {
@@ -14552,15 +14550,14 @@ static int zend_jit_recv(zend_llvm_ctx    &llvm_ctx,
 			if (cur_arg_info->class_name || cur_arg_info->type_hint) {
 				//JIT: zval *param = _get_zval_ptr_cv_undef_BP_VAR_W(execute_data, RES_OP()->var TSRMLS_CC);
 				Value *param = zend_jit_load_slot(llvm_ctx, RES_OP()->var);
-				//JIT: zend_verify_arg_type(EX(func), arg_num, param, opline->extended_value TSRMLS_CC);
+				//JIT: zend_verify_arg_type(EX(func), arg_num, param TSRMLS_CC);
 				zend_jit_check_type_hint(
 					llvm_ctx,
 					llvm_ctx.builder.CreateIntToPtr(
 						LLVM_GET_LONG((zend_uintptr_t)op_array),
 						PointerType::getUnqual(llvm_ctx.zend_function_type)),
 					llvm_ctx.builder.getInt32(arg_num + 1),
-					param,
-					LLVM_GET_LONG(0));
+					param);
 				//JIT: CHECK_EXCEPTION();
 				zend_jit_check_exception(llvm_ctx, opline);
 			}
