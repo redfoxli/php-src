@@ -10731,6 +10731,8 @@ static int zend_jit_fetch_dim(zend_llvm_ctx     &llvm_ctx,
 {
 	Value *ret;
 	Value *object_property;
+	Value *op1_addr = NULL;
+	Value *op2_addr = NULL;
 	Value *var_ptr = NULL;
 	Value *dim_ptr = NULL;
 	Value *result = NULL;
@@ -10749,12 +10751,13 @@ static int zend_jit_fetch_dim(zend_llvm_ctx     &llvm_ctx,
 		return zend_jit_handler(llvm_ctx, opline);
 	}
 
-	var_ptr = zend_jit_load_operand_addr(llvm_ctx,
-			        OP1_OP_TYPE(), OP1_OP(), OP1_SSA_VAR(), OP1_INFO(), fetch_type, opline);
+	op1_addr = zend_jit_load_operand_addr(llvm_ctx,
+			OP1_OP_TYPE(), OP1_OP(), OP1_SSA_VAR(), OP1_INFO(), fetch_type, opline);
+	var_ptr = zend_jit_deref(llvm_ctx, op1_addr, OP1_INFO());
 
 	if (OP2_OP_TYPE() != IS_UNUSED) {
-		dim_ptr = zend_jit_load_operand(llvm_ctx, OP2_OP_TYPE(), OP2_OP(), OP2_SSA_VAR(), OP2_INFO(), 0, opline);
-		dim_ptr = zend_jit_deref(llvm_ctx, dim_ptr, OP2_INFO());
+		op2_addr = zend_jit_load_operand(llvm_ctx, OP2_OP_TYPE(), OP2_OP(), OP2_SSA_VAR(), OP2_INFO(), 0, opline);
+		dim_ptr = zend_jit_deref(llvm_ctx, op2_addr, OP2_INFO());
 	}
 
 	result = zend_jit_load_slot(llvm_ctx, RES_OP()->var);
@@ -10867,11 +10870,11 @@ static int zend_jit_fetch_dim(zend_llvm_ctx     &llvm_ctx,
 		llvm_ctx.builder.SetInsertPoint(bb_finish);
 	}
 
-	if (!zend_jit_free_operand(llvm_ctx, OP2_OP_TYPE(), dim_ptr, NULL, OP2_INFO(), opline->lineno)) {
+	if (!zend_jit_free_operand(llvm_ctx, OP2_OP_TYPE(), op2_addr, NULL, OP2_INFO(), opline->lineno)) {
 		return 0;
 	}
 
-	if (!zend_jit_free_operand(llvm_ctx, OP1_OP_TYPE(), var_ptr, NULL, OP1_INFO(), opline->lineno)) {
+	if (!zend_jit_free_operand(llvm_ctx, OP1_OP_TYPE(), op1_addr, NULL, OP1_INFO(), opline->lineno)) {
 		return 0;
 	}
 
@@ -11280,13 +11283,12 @@ static int zend_jit_assign_dim(zend_llvm_ctx     &llvm_ctx,
 
 	op1_addr = zend_jit_load_operand_addr(llvm_ctx,
 			        OP1_OP_TYPE(), OP1_OP(), OP1_SSA_VAR(), OP1_INFO(), BP_VAR_W, opline);
+	var_ptr = zend_jit_deref(llvm_ctx, op1_addr, OP1_INFO());
 
 	if (OP2_OP_TYPE() != IS_UNUSED) {
 		op2_addr = zend_jit_load_operand(llvm_ctx,
 				OP2_OP_TYPE(), OP2_OP(), OP2_SSA_VAR(), OP2_INFO(), 0, opline);
 	}
-
-	var_ptr = zend_jit_deref(llvm_ctx, op1_addr, OP1_INFO());
 
 	if (RETURN_VALUE_USED(opline)) {
 		result = zend_jit_load_tmp_zval(llvm_ctx, RES_OP()->var);
