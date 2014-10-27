@@ -142,7 +142,6 @@ typedef struct _zend_jit_ssa_var_info {
 #define ZEND_JIT_FUNC_NO_FRAME                 (1<<13)
 #define ZEND_JIT_FUNC_INLINE                   (1<<14)
 #define ZEND_JIT_FUNC_HAS_REG_ARGS             (1<<15)
-#define ZEND_JIT_FUNC_LACK_OF_TYPE_INFOS       (1<<16)
 
 /* Data Flow Graph */
 typedef struct _zend_jit_dfg {
