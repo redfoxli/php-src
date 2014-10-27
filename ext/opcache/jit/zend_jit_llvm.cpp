@@ -11288,6 +11288,10 @@ static int zend_jit_assign_dim(zend_llvm_ctx     &llvm_ctx,
 
 	var_ptr = zend_jit_deref(llvm_ctx, op1_addr, OP1_INFO());
 
+	if (RETURN_VALUE_USED(opline)) {
+		result = zend_jit_load_tmp_zval(llvm_ctx, RES_OP()->var);
+	}
+
 	if (OP1_MAY_BE(MAY_BE_OBJECT)) {
 		if (OP1_MAY_BE(MAY_BE_ANY - MAY_BE_OBJECT)) {
 			BasicBlock *bb_object = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
