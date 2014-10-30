@@ -1910,13 +1910,14 @@ ZEND_VM_HANDLER(46, ZEND_JMPZ_EX, CONST|TMP|VAR|CV, ANY)
 	}
 
 	if (i_zend_is_true(val TSRMLS_CC)) {
+		FREE_OP1();
 		ZVAL_TRUE(EX_VAR(opline->result.var));
 		opline++;
 	} else {
+		FREE_OP1();
 		ZVAL_FALSE(EX_VAR(opline->result.var));
 		opline = opline->op2.jmp_addr;
 	}
-	FREE_OP1();
 	if (UNEXPECTED(EG(exception) != NULL)) {
 		HANDLE_EXCEPTION();
 	}
@@ -2075,7 +2076,7 @@ ZEND_VM_HANDLER(109, ZEND_FETCH_CLASS, ANY, CONST|TMP|VAR|UNUSED|CV)
 		} else if (Z_TYPE_P(class_name) == IS_OBJECT) {
 			Z_CE_P(EX_VAR(opline->result.var)) = Z_OBJCE_P(class_name);
 		} else if (Z_TYPE_P(class_name) == IS_STRING) {
-			Z_CE_P(EX_VAR(opline->result.var)) = zend_fetch_class(Z_STR_P(class_name), 0 TSRMLS_CC);
+			Z_CE_P(EX_VAR(opline->result.var)) = zend_fetch_class(Z_STR_P(class_name), opline->extended_value TSRMLS_CC);
 		} else {
 			if (UNEXPECTED(EG(exception) != NULL)) {
 				HANDLE_EXCEPTION();
@@ -3773,14 +3774,16 @@ ZEND_VM_HANDLER(99, ZEND_FETCH_CONSTANT, VAR|CONST|UNUSED, CONST)
 		} else if ((c = zend_quick_get_constant(opline->op2.zv + 1, opline->extended_value TSRMLS_CC)) == NULL) {
 			if ((opline->extended_value & IS_CONSTANT_UNQUALIFIED) != 0) {
 				char *actual = (char *)zend_memrchr(Z_STRVAL_P(opline->op2.zv), '\\', Z_STRLEN_P(opline->op2.zv));
-				if(!actual) {
-					actual = Z_STRVAL_P(opline->op2.zv);
+				if (!actual) {
+					ZVAL_STR(EX_VAR(opline->result.var), zend_string_copy(Z_STR_P(opline->op2.zv)));
 				} else {
 					actual++;
+					ZVAL_STRINGL(EX_VAR(opline->result.var),
+							actual, Z_STRLEN_P(opline->op2.zv) - (actual - Z_STRVAL_P(opline->op2.zv)));
 				}
 				/* non-qualified constant - allow text substitution */
-				zend_error(E_NOTICE, "Use of undefined constant %s - assumed '%s'", actual, actual);
-				ZVAL_STRINGL(EX_VAR(opline->result.var), actual, Z_STRLEN_P(opline->op2.zv)-(actual - Z_STRVAL_P(opline->op2.zv)));
+				zend_error(E_NOTICE, "Use of undefined constant %s - assumed '%s'",
+						Z_STRVAL_P(EX_VAR(opline->result.var)), Z_STRVAL_P(EX_VAR(opline->result.var)));
 				CHECK_EXCEPTION();
 				ZEND_VM_NEXT_OPCODE();
 			} else {

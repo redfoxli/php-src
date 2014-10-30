@@ -1059,7 +1059,7 @@ ZEND_FUNCTION(get_object_vars)
 }
 /* }}} */
 
-static int same_name(const char *key, const char *name, uint32_t name_len) /* {{{ */
+static int same_name(const char *key, const char *name, size_t name_len) /* {{{ */
 {
 	char *lcname = zend_str_tolower_dup(name, name_len);
 	int ret = memcmp(lcname, key, name_len) == 0;
@@ -1102,7 +1102,7 @@ ZEND_FUNCTION(get_class_methods)
 		       zend_check_protected(mptr->common.scope, EG(scope)))
 		   || ((mptr->common.fn_flags & ZEND_ACC_PRIVATE) &&
 		       EG(scope) == mptr->common.scope)))) {
-			uint len = mptr->common.function_name->len;
+			size_t len = mptr->common.function_name->len;
 
 			/* Do not display old-style inherited constructors */
 			if (!key) {
@@ -1830,6 +1830,10 @@ ZEND_FUNCTION(create_function)
 			RETURN_FALSE;
 		}
 		(*func->refcount)++;
+		static_variables = func->static_variables;
+		func->static_variables = NULL;
+		zend_hash_str_del(EG(function_table), LAMBDA_TEMP_FUNCNAME, sizeof(LAMBDA_TEMP_FUNCNAME)-1);
+		func->static_variables = static_variables;
 
 		function_name = zend_string_alloc(sizeof("0lambda_")+MAX_LENGTH_OF_LONG, 0);
 		function_name->val[0] = '\0';
@@ -1837,10 +1841,6 @@ ZEND_FUNCTION(create_function)
 		do {
 			function_name->len = snprintf(function_name->val + 1, sizeof("lambda_")+MAX_LENGTH_OF_LONG, "lambda_%d", ++EG(lambda_count)) + 1;
 		} while (zend_hash_add_ptr(EG(function_table), function_name, func) == NULL);
-		static_variables = func->static_variables;
-		func->static_variables = NULL;
-		zend_hash_str_del(EG(function_table), LAMBDA_TEMP_FUNCNAME, sizeof(LAMBDA_TEMP_FUNCNAME)-1);
-		func->static_variables = static_variables;
 		RETURN_STR(function_name);
 	} else {
 		zend_hash_str_del(EG(function_table), LAMBDA_TEMP_FUNCNAME, sizeof(LAMBDA_TEMP_FUNCNAME)-1);

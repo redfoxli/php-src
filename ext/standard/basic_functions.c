@@ -4529,7 +4529,7 @@ static int add_config_entry_cb(zval *entry TSRMLS_DC, int num_args, va_list args
 
 	if (Z_TYPE_P(entry) == IS_STRING) {
 		if (hash_key->key) {
-			add_assoc_str_ex(retval, hash_key->key->val, (uint)hash_key->key->len, zend_string_copy(Z_STR_P(entry)));
+			add_assoc_str_ex(retval, hash_key->key->val, hash_key->key->len, zend_string_copy(Z_STR_P(entry)));
 		} else {
 			add_index_str(retval, hash_key->h, zend_string_copy(Z_STR_P(entry)));
 		}
@@ -4962,7 +4962,7 @@ static int user_tick_function_compare(user_tick_function_entry * tick_fe1, user_
 }
 /* }}} */
 
-void php_call_shutdown_functions(TSRMLS_D) /* {{{ */
+PHPAPI void php_call_shutdown_functions(TSRMLS_D) /* {{{ */
 {
 	if (BG(user_shutdown_function_names)) {
 		zend_try {
@@ -4974,7 +4974,7 @@ void php_call_shutdown_functions(TSRMLS_D) /* {{{ */
 }
 /* }}} */
 
-void php_free_shutdown_functions(TSRMLS_D) /* {{{ */
+PHPAPI void php_free_shutdown_functions(TSRMLS_D) /* {{{ */
 {
 	if (BG(user_shutdown_function_names))
 		zend_try {
