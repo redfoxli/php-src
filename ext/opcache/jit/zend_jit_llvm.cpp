@@ -12240,6 +12240,13 @@ static int zend_jit_init_fcall(zend_llvm_ctx    &llvm_ctx,
 		func_addr = llvm_ctx.builder.CreateIntToPtr(
 				LLVM_GET_LONG((zend_uintptr_t)func),
 				PointerType::getUnqual(llvm_ctx.zend_function_type));
+	} else if (func && func->type == ZEND_USER_FUNCTION && op_array == &func->op_array) {
+		func_addr = llvm_ctx.builder.CreateAlignedLoad(
+			zend_jit_GEP(
+				llvm_ctx,
+				llvm_ctx._execute_data,
+				offsetof(zend_execute_data, func),
+				PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_function_type))), 4);
 	} else {
 		BasicBlock *bb_not_cached = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 		BasicBlock *bb_common = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
