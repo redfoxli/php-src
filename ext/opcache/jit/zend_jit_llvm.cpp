@@ -13208,68 +13208,71 @@ static int zend_jit_init_func_execute_data(zend_llvm_ctx    &llvm_ctx,
 				offsetof(zend_execute_data, run_time_cache),
 				PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))), 4);
     } else {
-		BasicBlock *bb_follow = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
-		BasicBlock *bb_common = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
-		PHI_DCL(cache, 3);
-
-		//JIT: if (!op_array->run_time_cache && op_array->last_cache_slot) {
     	Value *cache = llvm_ctx.builder.CreateAlignedLoad(
 			zend_jit_GEP(
 				llvm_ctx,
 				func_addr,
 				offsetof(zend_function, op_array.run_time_cache),
 				PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))), 4);
-		PHI_ADD(cache, cache);
-		zend_jit_unexpected_br(llvm_ctx,
-			llvm_ctx.builder.CreateIsNull(cache),
-			bb_follow,
-			bb_common);
-		llvm_ctx.builder.SetInsertPoint(bb_follow);
-
-		if (!func) {
+		// We don't have to reinitialize run_time_cache for recursive function calls
+		if (llvm_ctx.op_array != &func->op_array) {
+			//JIT: if (!op_array->run_time_cache && op_array->last_cache_slot) {
 			BasicBlock *bb_follow = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+			BasicBlock *bb_common = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+			PHI_DCL(cache, 3);
+
 			PHI_ADD(cache, cache);
-			zend_jit_expected_br(llvm_ctx,
-				llvm_ctx.builder.CreateICmpNE(
-					llvm_ctx.builder.CreateAlignedLoad(
-						zend_jit_GEP(
-							llvm_ctx,
-							func_addr,
-							offsetof(zend_function, op_array.last_cache_slot),
-							PointerType::getUnqual(Type::getInt32Ty(llvm_ctx.context))), 4),
-					llvm_ctx.builder.getInt32(0)),
+			zend_jit_unexpected_br(llvm_ctx,
+				llvm_ctx.builder.CreateIsNull(cache),
 				bb_follow,
 				bb_common);
-			llvm_ctx.builder.SetInsertPoint(bb_follow);			
-		}			
-		//JIT: op_array->run_time_cache = zend_arena_calloc(&CG(arena), op_array->last_cache_slot, sizeof(void*));
-		cache =
-			llvm_ctx.builder.CreatePtrToInt(
-				zend_jit_arena_calloc(llvm_ctx,
-					llvm_ctx._CG_arena,
-					(func ? 
-						(Value*)llvm_ctx.builder.getInt32(func->op_array.last_cache_slot) :
-						(Value*)llvm_ctx.builder.CreateAlignedLoad(
+			llvm_ctx.builder.SetInsertPoint(bb_follow);
+
+			if (!func) {
+				BasicBlock *bb_follow = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+				PHI_ADD(cache, cache);
+				zend_jit_expected_br(llvm_ctx,
+					llvm_ctx.builder.CreateICmpNE(
+						llvm_ctx.builder.CreateAlignedLoad(
 							zend_jit_GEP(
 								llvm_ctx,
 								func_addr,
 								offsetof(zend_function, op_array.last_cache_slot),
-								PointerType::getUnqual(Type::getInt32Ty(llvm_ctx.context))), 4)),
-					sizeof(void*),
-					lineno),
-				LLVM_GET_LONG_TY(llvm_ctx.context)),
-	    llvm_ctx.builder.CreateAlignedStore(
-    		cache,
-			zend_jit_GEP(
-				llvm_ctx,
-				func_addr,
-				offsetof(zend_function, op_array.run_time_cache),
-				PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))), 4);
-		PHI_ADD(cache, cache);
-		llvm_ctx.builder.CreateBr(bb_common);
-		//JIT: EX(run_time_cache) = op_array->run_time_cache;
-		llvm_ctx.builder.SetInsertPoint(bb_common);
-		PHI_SET(cache, cache, LLVM_GET_LONG_TY(llvm_ctx.context));
+								PointerType::getUnqual(Type::getInt32Ty(llvm_ctx.context))), 4),
+						llvm_ctx.builder.getInt32(0)),
+					bb_follow,
+					bb_common);
+				llvm_ctx.builder.SetInsertPoint(bb_follow);			
+			}			
+			//JIT: op_array->run_time_cache = zend_arena_calloc(&CG(arena), op_array->last_cache_slot, sizeof(void*));
+			cache =
+				llvm_ctx.builder.CreatePtrToInt(
+					zend_jit_arena_calloc(llvm_ctx,
+						llvm_ctx._CG_arena,
+						(func ? 
+							(Value*)llvm_ctx.builder.getInt32(func->op_array.last_cache_slot) :
+							(Value*)llvm_ctx.builder.CreateAlignedLoad(
+								zend_jit_GEP(
+									llvm_ctx,
+									func_addr,
+									offsetof(zend_function, op_array.last_cache_slot),
+									PointerType::getUnqual(Type::getInt32Ty(llvm_ctx.context))), 4)),
+						sizeof(void*),
+						lineno),
+					LLVM_GET_LONG_TY(llvm_ctx.context)),
+		    llvm_ctx.builder.CreateAlignedStore(
+    			cache,
+				zend_jit_GEP(
+					llvm_ctx,
+					func_addr,
+					offsetof(zend_function, op_array.run_time_cache),
+					PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))), 4);
+			PHI_ADD(cache, cache);
+			llvm_ctx.builder.CreateBr(bb_common);
+			//JIT: EX(run_time_cache) = op_array->run_time_cache;
+			llvm_ctx.builder.SetInsertPoint(bb_common);
+			PHI_SET(cache, cache, LLVM_GET_LONG_TY(llvm_ctx.context));
+		}
 	    llvm_ctx.builder.CreateAlignedStore(
     		cache,
 			zend_jit_GEP(
