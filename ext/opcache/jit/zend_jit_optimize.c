@@ -5288,25 +5288,25 @@ void zend_jit_mark_tmp_zvals(zend_op_array *op_array)
 
 int zend_jit_optimize_vars(zend_jit_context *ctx, zend_op_array *op_array)
 {
-	if ((ZCG(accel_directives).jit_opt & JIT_OPT_SSA) >= JIT_OPT_SSA_O1) {
-		if (zend_jit_compute_preallocated_cvs_types(op_array) != SUCCESS) {
-			return FAILURE;
-		}
-	}
+//???	if ((ZCG(accel_directives).jit_opt & JIT_OPT_SSA) >= JIT_OPT_SSA_O1) {
+//???		if (zend_jit_compute_preallocated_cvs_types(op_array) != SUCCESS) {
+//???			return FAILURE;
+//???		}
+//???	}
 
-	zend_jit_mark_tmp_zvals(op_array);
+//???	zend_jit_mark_tmp_zvals(op_array);
 
-//???	zend_jit_mark_reg_zvals(op_array);
+	//???zend_jit_mark_reg_zvals(op_array);
 
-	zend_jit_check_no_used_args(op_array);
+//???	zend_jit_check_no_used_args(op_array);
 
 	zend_jit_check_no_symtab(op_array);
 
-	zend_jit_check_no_frame(ctx, op_array);
+//???	zend_jit_check_no_frame(ctx, op_array);
 
-	zend_jit_check_inlining(op_array);
+//???	zend_jit_check_inlining(op_array);
 
-	zend_jit_mark_reg_args(op_array);
+//???	zend_jit_mark_reg_args(op_array);
 
 	return SUCCESS;
 }

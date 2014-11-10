@@ -289,7 +289,6 @@ extern int zend_jit_rid;
 #define MAY_BE_IN_MEM   (1<<14) /* at least one of usage requires completely
                                    initialized zval structure in memory */
 #define MAY_BE_IN_REG   (1<<15) /* value allocated in CPU register */
-//???#define MAY_BE_TMP_ZVAL (1<<15) /* zval allocated on CPU stack */
 
 #define MAY_BE_ARRAY_OF_NULL		(1<<(16+0)) //???IS_NULL))
 #define MAY_BE_ARRAY_OF_FALSE		(1<<(16+1)) //???IS_BOOL))

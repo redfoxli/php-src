@@ -227,10 +227,6 @@ static void zend_jit_dump_info(uint32_t info, zend_class_entry *ce, int is_insta
 		if (first) first = 0; else fprintf(stderr, ", ");
 		fprintf(stderr, "reg_zval_ptr");
 	}
-//???	if (info & MAY_BE_TMP_ZVAL) {
-//???		if (first) first = 0; else fprintf(stderr, ", ");
-//???		fprintf(stderr, "tmp");
-//???	}
 	if (info & MAY_BE_IN_MEM) {
 		if (first) first = 0; else fprintf(stderr, ", ");
 		fprintf(stderr, "mem");

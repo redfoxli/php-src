@@ -401,7 +401,7 @@ int zend_jit(zend_persistent_script *script TSRMLS_DC)
 //???	zend_jit_optimize_calls(ctx);
 	for (i = 0; i < ctx->op_arrays_count; i++) {
 		info = JIT_DATA(ctx->op_arrays[i]);
-//???		zend_jit_optimize_vars(ctx, ctx->op_arrays[i] TSRMLS_CC);
+		zend_jit_optimize_vars(ctx, ctx->op_arrays[i] TSRMLS_CC);
 		/* optimize clones */
 		if (info->clone) {
 			zend_jit_func_info *clone = info->clone;

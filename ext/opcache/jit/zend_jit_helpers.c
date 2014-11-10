@@ -366,6 +366,14 @@ ZEND_FASTCALL zval* zend_jit_obj_proxy_concat(zval *var_ptr, zval *value) {
 	return var_ptr;
 }
 
+ZEND_FASTCALL void zend_jit_helper_free_zvals_reverse(zval *p, zval *end)
+{
+	do {
+		p--;
+		zval_ptr_dtor_nogc(p);
+	} while (p != end);
+}
+
 /*
  * Local variables:
  * tab-width: 4
