@@ -2851,6 +2851,60 @@ static int zend_jit_save_zval_obj(zend_llvm_ctx &llvm_ctx,
 }
 /* }}} */
 
+/* {{{ static int zend_jit_save_zval_ptr */
+static int zend_jit_save_zval_ptr(zend_llvm_ctx &llvm_ctx,
+                                  Value         *zval_addr,
+                                  int            ssa_var,
+                                  uint32_t       info,
+                                  Value         *val)
+{
+	if (info & MAY_BE_IN_REG) {
+		llvm_ctx.builder.CreateAlignedStore(
+			llvm_ctx.builder.CreateBitCast(
+				val,
+				PointerType::getUnqual(Type::getInt8Ty(llvm_ctx.context))),
+			llvm_ctx.builder.CreateBitCast(
+				llvm_ctx.reg[ssa_var],
+				PointerType::getUnqual(PointerType::getUnqual(Type::getInt8Ty(llvm_ctx.context)))),
+			4);
+		return 1;
+	}
+	llvm_ctx.builder.CreateAlignedStore(
+		llvm_ctx.builder.CreateBitCast(
+			val,
+			PointerType::getUnqual(Type::getInt8Ty(llvm_ctx.context))),
+		zend_jit_GEP(
+			llvm_ctx,
+			zval_addr,
+			offsetof(zval, value.obj),
+			PointerType::getUnqual(PointerType::getUnqual(Type::getInt8Ty(llvm_ctx.context)))),
+		4);
+	return 1;
+}
+/* }}} */
+
+/* {{{ static Value* zend_jit_load_ptr */
+static Value* zend_jit_load_ptr(zend_llvm_ctx &llvm_ctx,
+                                Value         *zval_addr,
+                                int            ssa_var,
+                                uint32_t       info)
+{
+	if (info & MAY_BE_IN_REG) {
+		return 	llvm_ctx.builder.CreateBitCast(
+			llvm_ctx.builder.CreateAlignedLoad(llvm_ctx.reg[ssa_var], 4),
+			PointerType::getUnqual(Type::getInt8Ty(llvm_ctx.context)));
+	}
+	return llvm_ctx.builder.CreateAlignedLoad(
+			zend_jit_GEP(
+				llvm_ctx,
+				zval_addr,
+				offsetof(zval, value.obj),
+				PointerType::getUnqual(
+					PointerType::getUnqual(
+						Type::getInt8Ty(llvm_ctx.context)))), 4);
+}
+/* }}} */
+
 /* {{{ static int zend_jit_save_zval_ind */
 static int zend_jit_save_zval_ind(zend_llvm_ctx &llvm_ctx,
                                   Value         *zval_addr,
@@ -3764,7 +3818,7 @@ static int zend_jit_copy_value(zend_llvm_ctx &llvm_ctx,
 		from_type = zend_jit_load_type_info_c(llvm_ctx, from_addr, from_op_type, from_op, from_info);
 	}
 
-	if (from_info & (MAY_BE_ANY - MAY_BE_NULL)) {
+	if (from_info & (MAY_BE_ANY - (MAY_BE_NULL|MAY_BE_FALSE|MAY_BE_TRUE))) {
 		if (from_op_type == IS_CONST) {
 			if (Z_TYPE_P(from_op->zv) == IS_DOUBLE) {
 #if SIZEOF_ZEND_LONG == 8
@@ -3774,6 +3828,14 @@ static int zend_jit_copy_value(zend_llvm_ctx &llvm_ctx,
 				zend_jit_save_zval_dval(llvm_ctx, to_addr, to_ssa_var, to_info,
 					zend_jit_load_dval(llvm_ctx, from_addr, from_ssa_var, from_info));
 #endif
+			} else if ((to_info & MAY_BE_IN_REG) || (from_info & MAY_BE_IN_REG)) {
+				if (from_info & MAY_BE_LONG) {
+					zend_jit_save_zval_lval(llvm_ctx, to_addr, to_ssa_var, to_info,
+						LLVM_GET_LONG(Z_LVAL_P(from_op->zv)));
+				} else {
+					zend_jit_save_zval_ptr(llvm_ctx, to_addr, to_ssa_var, to_info,
+						zend_jit_load_ptr(llvm_ctx, from_addr, from_ssa_var, from_info));
+				}
 			} else {
 				zend_jit_save_zval_lval(llvm_ctx, to_addr, to_ssa_var, to_info,
 					LLVM_GET_LONG(Z_LVAL_P(from_op->zv)));
@@ -3782,6 +3844,14 @@ static int zend_jit_copy_value(zend_llvm_ctx &llvm_ctx,
 			if (from_info & MAY_BE_DOUBLE) {
 				zend_jit_save_zval_dval(llvm_ctx, to_addr, to_ssa_var, to_info,
 					zend_jit_load_dval(llvm_ctx, from_addr, from_ssa_var, from_info));
+			} else if ((to_info & MAY_BE_IN_REG) || (from_info & MAY_BE_IN_REG)) {
+				if (from_info & MAY_BE_LONG) {
+					zend_jit_save_zval_lval(llvm_ctx, to_addr, to_ssa_var, to_info,
+						zend_jit_load_lval_c(llvm_ctx, from_addr, from_op_type, from_op, from_ssa_var, from_info));
+				} else {
+					zend_jit_save_zval_ptr(llvm_ctx, to_addr, to_ssa_var, to_info,
+						zend_jit_load_ptr(llvm_ctx, from_addr, from_ssa_var, from_info));
+				}
 			} else {
 				zend_jit_save_zval_lval(llvm_ctx, to_addr, to_ssa_var, to_info,
 					zend_jit_load_lval_c(llvm_ctx, from_addr, from_op_type, from_op, from_ssa_var, from_info));
@@ -15801,6 +15871,11 @@ void zend_jit_mark_reg_zvals(zend_op_array *op_array) /* {{{ */
 			if ((ssa_var_info[i].type & MAY_BE_UNDEF) ||
 			    (ssa_var_info[i].type & MAY_BE_REF) ||
 		    	(ssa_var[i].var < op_array->last_var && (uint32_t)ssa_var[i].var == op_array->this_var)) {
+				continue;
+			}
+
+			/* STRING may be interned, ARRAY may be immutable */
+			if (ssa_var_info[i].type & (MAY_BE_ARRAY|MAY_BE_STRING)) {
 				continue;
 			}
 
