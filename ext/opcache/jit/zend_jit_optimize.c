@@ -2050,13 +2050,20 @@ static int zend_jit_calc_range(zend_jit_context *ctx, zend_op_array *op_array, i
 				    *tmp = info->arg_info[opline->op1.num-1].info.range;
 				    return 1;
 				} else if (op_array->arg_info &&
-				    opline->op1.num <= op_array->num_args &&
-				    op_array->arg_info[opline->op1.num-1].type_hint == IS_LONG) {
-				    tmp->underflow = 0;
-				    tmp->min = LONG_MIN;
-				    tmp->max = LONG_MAX;
-				    tmp->overflow = 0;
-				    return 1;
+				    opline->op1.num <= op_array->num_args) {
+					if (op_array->arg_info[opline->op1.num-1].type_hint == IS_LONG) {
+					    tmp->underflow = 0;
+					    tmp->min = LONG_MIN;
+					    tmp->max = LONG_MAX;
+					    tmp->overflow = 0;
+					    return 1;
+					} else if (op_array->arg_info[opline->op1.num-1].type_hint == _IS_BOOL) {
+					    tmp->underflow = 0;
+					    tmp->min = 0;
+					    tmp->max = 1;
+					    tmp->overflow = 0;
+					    return 1;
+					}
 				}
 			}
 			break;
@@ -2068,11 +2075,32 @@ static int zend_jit_calc_range(zend_jit_context *ctx, zend_op_array *op_array, i
 				while (call_info && call_info->caller_call_opline != opline) {
 					call_info = call_info->next_callee;
 				}
-				if (call_info && call_info->callee_func->type == ZEND_USER_FUNCTION) {
-					zend_jit_func_info *func_info = JIT_DATA(&call_info->callee_func->op_array);
-					if (func_info && func_info->return_info.has_range) {
-						*tmp = func_info->return_info.range;
-						return 1;
+				if (call_info) {
+					uint32_t type;
+
+					if (call_info->callee_func->type == ZEND_USER_FUNCTION) {
+						zend_jit_func_info *func_info = JIT_DATA(&call_info->callee_func->op_array);
+						if (func_info && func_info->return_info.has_range) {
+							*tmp = func_info->return_info.range;
+							return 1;
+						}
+					}
+					type = zend_jit_get_func_info(call_info);
+					if (!(type & (MAY_BE_ANY - (MAY_BE_NULL|MAY_BE_FALSE|MAY_BE_TRUE|MAY_BE_LONG)))) {
+					    tmp->underflow = 0;
+					    tmp->min = 0;
+					    tmp->max = 0;
+					    tmp->overflow = 0;
+						if (type & MAY_BE_LONG) {
+						    tmp->min = LONG_MIN;
+						    tmp->max = LONG_MAX;
+						} else if (type & MAY_BE_TRUE) {
+							if (!(type & (MAY_BE_NULL|MAY_BE_FALSE))) {
+						    	tmp->min = 1;
+							}
+						    tmp->max = 1;
+						}
+					    return 1;
 					}
 				}
 			}
