@@ -3848,15 +3848,29 @@ static int zend_jit_copy_value(zend_llvm_ctx &llvm_ctx,
 #endif
 			} else if ((to_info & MAY_BE_IN_REG) || (from_info & MAY_BE_IN_REG)) {
 				if (from_info & MAY_BE_LONG) {
-					zend_jit_save_zval_lval(llvm_ctx, to_addr, to_ssa_var, to_info,
-						LLVM_GET_LONG(Z_LVAL_P(from_op->zv)));
+					if ((to_info & (MAY_BE_LONG|MAY_BE_DOUBLE)) == MAY_BE_DOUBLE) {
+						zend_jit_save_zval_dval(llvm_ctx, to_addr, to_ssa_var, to_info,
+							llvm_ctx.builder.CreateSIToFP(
+								LLVM_GET_LONG(Z_LVAL_P(from_op->zv)),
+								Type::getDoubleTy(llvm_ctx.context)));
+					} else {
+						zend_jit_save_zval_lval(llvm_ctx, to_addr, to_ssa_var, to_info,
+							LLVM_GET_LONG(Z_LVAL_P(from_op->zv)));
+					}
 				} else {
 					zend_jit_save_zval_ptr(llvm_ctx, to_addr, to_ssa_var, to_info,
 						zend_jit_load_ptr(llvm_ctx, from_addr, from_ssa_var, from_info));
 				}
 			} else {
-				zend_jit_save_zval_lval(llvm_ctx, to_addr, to_ssa_var, to_info,
-					LLVM_GET_LONG(Z_LVAL_P(from_op->zv)));
+				if ((to_info & (MAY_BE_LONG|MAY_BE_DOUBLE)) == MAY_BE_DOUBLE) {
+					zend_jit_save_zval_dval(llvm_ctx, to_addr, to_ssa_var, to_info,
+						llvm_ctx.builder.CreateSIToFP(
+							LLVM_GET_LONG(Z_LVAL_P(from_op->zv)),
+							Type::getDoubleTy(llvm_ctx.context)));
+				} else {
+					zend_jit_save_zval_lval(llvm_ctx, to_addr, to_ssa_var, to_info,
+						LLVM_GET_LONG(Z_LVAL_P(from_op->zv)));
+				}
 			}
 		} else {
 			if (from_info & MAY_BE_DOUBLE) {

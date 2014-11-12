@@ -4739,8 +4739,7 @@ static int zend_jit_infer_types(zend_jit_context *ctx, zend_op_array *op_array)
 	}
 
 	/* Narrowing integer initialization to doubles */
-//??? Not implemented yet
-//???	zend_jit_type_narrowing(ctx, op_array);
+	zend_jit_type_narrowing(ctx, op_array);
 	
 	zend_jit_func_return_info(ctx, op_array, 1, 0, &info->return_info);
 	return SUCCESS;
