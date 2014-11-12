@@ -2049,6 +2049,14 @@ static int zend_jit_calc_range(zend_jit_context *ctx, zend_op_array *op_array, i
 				    info->arg_info[opline->op1.num-1].info.has_range) {
 				    *tmp = info->arg_info[opline->op1.num-1].info.range;
 				    return 1;
+				} else if (op_array->arg_info &&
+				    opline->op1.num <= op_array->num_args &&
+				    op_array->arg_info[opline->op1.num-1].type_hint == IS_LONG) {
+				    tmp->underflow = 0;
+				    tmp->min = LONG_MIN;
+				    tmp->max = LONG_MAX;
+				    tmp->overflow = 0;
+				    return 1;
 				}
 			}
 			break;
