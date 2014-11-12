@@ -5766,6 +5766,9 @@ static Value* zend_jit_fetch_dimension_address_read(zend_llvm_ctx     &llvm_ctx,
 		}
 
 		Value *rzv = zend_jit_get_stack_slot(llvm_ctx, 0);
+		if (dim_info & MAY_BE_IN_REG) {
+			dim = zend_jit_reload_from_reg(llvm_ctx, dim_ssa, dim_info);
+		}
 		Value *rv = zend_jit_read_dimension(llvm_ctx, read_dim_handler, container, dim, fetch_type, rzv, opline);
 
 		BasicBlock *bb_found = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
@@ -6111,6 +6114,9 @@ static Value* zend_jit_fetch_dimension_address(zend_llvm_ctx     &llvm_ctx,
 			BasicBlock *bb_success = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 			BasicBlock *bb_fail = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 			BasicBlock *bb_ind = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+			if (dim_info & MAY_BE_IN_REG) {
+				dim = zend_jit_reload_from_reg(llvm_ctx, dim_ssa, dim_info);
+			}
 			Value *rv = zend_jit_read_dimension(llvm_ctx, read_dim_handler, container, dim, fetch_type, result, opline);
 			Value *call_ret = zend_jit_slow_fetch_address_obj(llvm_ctx, container, rv, result, opline);
 
@@ -16100,6 +16106,11 @@ void zend_jit_mark_reg_zvals(zend_op_array *op_array) /* {{{ */
 		if (has_concrete_type(ssa_var_info[i].type) ||
 		    ((ssa_var_info[i].type & (MAY_BE_NULL|MAY_BE_FALSE|MAY_BE_TRUE)) &&
 		     !(ssa_var_info[i].type & (MAY_BE_ANY - (MAY_BE_NULL|MAY_BE_FALSE|MAY_BE_TRUE))))) {
+
+			/* TODO: Something wrong ??? */
+			if (!(ssa_var_info[i].type & MAY_BE_ANY)) {
+				continue;
+			}
 
 			/* PHP references and $this cannot be kept in memory */
 			if ((ssa_var_info[i].type & MAY_BE_UNDEF) ||
