@@ -15046,6 +15046,9 @@ static BasicBlock *zend_jit_ssa_target(zend_llvm_ctx    &llvm_ctx,
 				continue;
 			}
 			ZEND_ASSERT(to_var >= 0 && from_var >= 0);
+			if (info->ssa_var[from_var].no_val) {
+				continue;
+			}			
 			to_info = info->ssa_var_info[to_var].type;
 			from_info = info->ssa_var_info[from_var].type;
 			if ((to_info & MAY_BE_IN_REG) || (from_info & MAY_BE_IN_REG)) {
