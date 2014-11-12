@@ -14552,14 +14552,15 @@ static int zend_jit_free_compiled_variables(zend_llvm_ctx    &llvm_ctx,
                                             zend_op_array    *op_array,
                                             zend_op          *opline)
 {
+	zend_jit_func_info *ctx = JIT_DATA(op_array);
+    uint32_t info;
+
 	// TODO: use type inference to avoid useless zval_ptr_dtor() ???...
-	for (uint32_t i = 0 ; i < op_array->last_var; i++) {
-	    uint32_t info = 0;
-		zend_jit_func_info *ctx = JIT_DATA(op_array);
-	    
+	for (uint32_t i = 0 ; i < op_array->last_var; i++) {	    
 	    if (ctx && ctx->ssa_var && ctx->ssa_var_info) {
-		    for (uint32_t j = 0; j < ctx->ssa_vars; j++) {
-		    	if (ctx->ssa_var[i].var == i) {
+			info = ctx->ssa_var_info[i].type;
+		    for (uint32_t j = op_array->last_var; j < ctx->ssa_vars; j++) {
+		    	if (ctx->ssa_var[j].var == i) {
 		    		if (!(ctx->ssa_var_info[j].type & MAY_BE_IN_REG)) {
 						info |= ctx->ssa_var_info[j].type;
 					}
@@ -14569,12 +14570,14 @@ static int zend_jit_free_compiled_variables(zend_llvm_ctx    &llvm_ctx,
 			info = MAY_BE_RC1 | MAY_BE_RCN | MAY_BE_REF | MAY_BE_ANY;
 		}
 
-		Value *var = zend_jit_GEP(
-			llvm_ctx,
-			llvm_ctx._execute_data,
-			(ZEND_CALL_FRAME_SLOT + i) * sizeof(zval),
-			llvm_ctx.zval_ptr_type);
-		zend_jit_zval_ptr_dtor_ex(llvm_ctx, var, NULL, -1, info, opline->lineno, 1);
+		if (info & (MAY_BE_STRING|MAY_BE_ARRAY|MAY_BE_OBJECT|MAY_BE_RESOURCE|MAY_BE_REF)) {
+			Value *var = zend_jit_GEP(
+				llvm_ctx,
+				llvm_ctx._execute_data,
+				(ZEND_CALL_FRAME_SLOT + i) * sizeof(zval),
+				llvm_ctx.zval_ptr_type);
+			zend_jit_zval_ptr_dtor_ex(llvm_ctx, var, NULL, -1, info, opline->lineno, 1);
+		}
 	}
 	return 1;
 }
