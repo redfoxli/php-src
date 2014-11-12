@@ -5296,7 +5296,7 @@ int zend_jit_optimize_vars(zend_jit_context *ctx, zend_op_array *op_array)
 
 //???	zend_jit_mark_tmp_zvals(op_array);
 
-	//???zend_jit_mark_reg_zvals(op_array);
+	zend_jit_mark_reg_zvals(op_array);
 
 //???	zend_jit_check_no_used_args(op_array);
 
