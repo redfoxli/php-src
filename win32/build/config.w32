@@ -146,7 +146,7 @@ ADD_SOURCES("win32", "inet.c fnmatch.c sockets.c");
 if (VS_TOOLSET && VCVERS <= 1300) {
 	ADD_SOURCES("win32", "strtoi64.c");
 }
-if (VS_TOOLSET && VCVERS >= 1400 || ICC_TOOLSET) {
+if (VS_TOOLSET && VCVERS >= 1400 || !VS_TOOLSET) {
 	AC_DEFINE('HAVE_STRNLEN', 1);
 }
 
@@ -237,5 +237,12 @@ if (PHP_ANALYZER == "vs") {
 	}
 } else {
 	PHP_ANALYZER = "no"
+}
+
+if (CLANG_TOOLSET) {
+	ARG_WITH("uncritical-warn-choke", "Disable some uncritical warnings", "yes");
+	if (PHP_UNCRITICAL_WARN_CHOKE != "no") {
+		ADD_FLAG("CFLAGS", "-Wno-ignored-attributes -Wno-deprecated-declarations -Wno-missing-braces -Wno-msvc-include -Wno-invalid-source-encoding");
+	}
 }
 
