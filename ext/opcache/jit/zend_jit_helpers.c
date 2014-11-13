@@ -378,6 +378,17 @@ ZEND_FASTCALL void zend_jit_helper_free_extra_args(zend_execute_data *call)
 	} while (p != end);
 }
 
+ZEND_FASTCALL void zend_jit_helper_free_call_frame(void)
+{
+	zend_vm_stack p = EG(vm_stack);
+	zend_vm_stack prev = p->prev;
+
+	EG(vm_stack_top) = prev->top;
+	EG(vm_stack_end) = prev->end;
+	EG(vm_stack) = prev;
+	efree(p);
+}
+
 /*
  * Local variables:
  * tab-width: 4

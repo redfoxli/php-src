@@ -12708,6 +12708,27 @@ static int zend_jit_vm_stack_free_args(zend_llvm_ctx      &llvm_ctx,
 }
 /* }}} */
 
+/* {{{ static int zend_jit_free_extra_args */
+static int zend_jit_free_call_frame_helper(zend_llvm_ctx &llvm_ctx)
+{
+	Function *_helper = zend_jit_get_helper(
+			llvm_ctx,
+			(void*)zend_jit_helper_free_call_frame,
+			ZEND_JIT_SYM("zend_jit_helper_free_call_frame"),
+			ZEND_JIT_HELPER_FAST_CALL,
+			Type::getVoidTy(llvm_ctx.context),
+			NULL,
+			NULL,
+			NULL,
+			NULL,
+			NULL);
+
+	CallInst *call = llvm_ctx.builder.CreateCall(_helper);
+	call->setCallingConv(CallingConv::X86_FastCall);
+	return 1;
+}
+/* }}} */
+
 /* {{{ static int zend_jit_vm_stack_free_call_frame */
 static int zend_jit_vm_stack_free_call_frame(zend_llvm_ctx    &llvm_ctx,
                                              Value            *call,
@@ -12730,6 +12751,9 @@ static int zend_jit_vm_stack_free_call_frame(zend_llvm_ctx    &llvm_ctx,
 		bb_slow,
 		bb_fast);
 	llvm_ctx.builder.SetInsertPoint(bb_slow);
+#if 1
+	zend_jit_free_call_frame_helper(llvm_ctx);
+#else
 	//JIT: zend_vm_stack prev = p->prev;
 	Value *prev = llvm_ctx.builder.CreateAlignedLoad(
 			zend_jit_GEP(
@@ -12762,6 +12786,7 @@ static int zend_jit_vm_stack_free_call_frame(zend_llvm_ctx    &llvm_ctx,
 	//JIT: efree(p);
 	zend_jit_efree(llvm_ctx, p, lineno);
 	//JIT: p->top = (zval*)call;
+#endif
 	llvm_ctx.builder.CreateBr(bb_common);	
 	llvm_ctx.builder.SetInsertPoint(bb_fast);
 	llvm_ctx.builder.CreateAlignedStore(
@@ -14585,7 +14610,7 @@ static int zend_jit_free_compiled_variables(zend_llvm_ctx    &llvm_ctx,
 
 /* {{{ static int zend_jit_free_extra_args */
 static int zend_jit_free_extra_args_helper(zend_llvm_ctx &llvm_ctx,
-                                    Value         *execute_data)
+                                           Value         *execute_data)
 {
 	Function *_helper = zend_jit_get_helper(
 			llvm_ctx,
