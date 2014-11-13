@@ -62,7 +62,7 @@ ZEND_FASTCALL zval* zend_jit_obj_proxy_sub(zval *var_ptr, zval *value);
 ZEND_FASTCALL zval* zend_jit_obj_proxy_mul(zval *var_ptr, zval *value);
 ZEND_FASTCALL zval* zend_jit_obj_proxy_div(zval *var_ptr, zval *value);
 ZEND_FASTCALL zval* zend_jit_obj_proxy_concat(zval *var_ptr, zval *value);
-ZEND_FASTCALL void zend_jit_helper_free_zvals_reverse(zval *p, zval *end);
+ZEND_FASTCALL void zend_jit_helper_free_extra_args(zend_execute_data *call);
 
 #ifdef __cplusplus
 }

@@ -14583,24 +14583,23 @@ static int zend_jit_free_compiled_variables(zend_llvm_ctx    &llvm_ctx,
 }
 /* }}} */
 
-/* {{{ static int zend_jit_free_zvals_reverse */
-static int zend_jit_free_zvals_reverse(zend_llvm_ctx &llvm_ctx,
-                                          Value         *p,
-                                          Value         *end)
+/* {{{ static int zend_jit_free_extra_args */
+static int zend_jit_free_extra_args_helper(zend_llvm_ctx &llvm_ctx,
+                                    Value         *execute_data)
 {
 	Function *_helper = zend_jit_get_helper(
 			llvm_ctx,
-			(void*)zend_jit_helper_free_zvals_reverse,
-			ZEND_JIT_SYM("zend_jit_helper_free_zvals_reverse"),
+			(void*)zend_jit_helper_free_extra_args,
+			ZEND_JIT_SYM("zend_jit_helper_free_extra_args"),
 			ZEND_JIT_HELPER_FAST_CALL,
-			PointerType::getUnqual(llvm_ctx.zend_string_type),
-			llvm_ctx.zval_ptr_type,
-			llvm_ctx.zval_ptr_type,
+			Type::getVoidTy(llvm_ctx.context),
+			PointerType::getUnqual(llvm_ctx.zend_execute_data_type),
+			NULL,
 			NULL,
 			NULL,
 			NULL);
 
-	CallInst *call = llvm_ctx.builder.CreateCall2(_helper, p, end);
+	CallInst *call = llvm_ctx.builder.CreateCall(_helper, execute_data);
 	call->setCallingConv(CallingConv::X86_FastCall);
 	return 1;
 }
@@ -14630,6 +14629,10 @@ static int zend_jit_free_extra_args(zend_llvm_ctx    &llvm_ctx,
 		bb_follow,
 		bb_end);
 	llvm_ctx.builder.SetInsertPoint(bb_follow);
+#if 1
+	zend_jit_free_extra_args_helper(llvm_ctx, llvm_ctx._execute_data);
+	llvm_ctx.builder.CreateBr(bb_end);
+#else
 	//JIT: zval *end = EX_VAR_NUM_2(call, call->func->op_array.last_var + call->func->op_array.T);
 	Value *end = zend_jit_GEP(
 		llvm_ctx,
@@ -14642,10 +14645,6 @@ static int zend_jit_free_extra_args(zend_llvm_ctx    &llvm_ctx,
 		llvm_ctx.builder.CreateSub(
 			num_args,
 			llvm_ctx.builder.getInt32(first_extra_arg)));
-#if 1
-	zend_jit_free_zvals_reverse(llvm_ctx, var, end);
-	llvm_ctx.builder.CreateBr(bb_end);
-#else
    	BasicBlock *bb_loop = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 	//JIT: do {
 	PHI_DCL2(var, 2);
