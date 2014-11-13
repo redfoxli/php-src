@@ -389,6 +389,13 @@ ZEND_FASTCALL void zend_jit_helper_free_call_frame(void)
 	efree(p);
 }
 
+ZEND_FASTCALL void* zend_jit_helper_arena_calloc(size_t size)
+{
+	void *ret = zend_arena_alloc(&CG(arena), size);
+	memset(ret, 0, size); 
+	return ret;
+}
+
 /*
  * Local variables:
  * tab-width: 4

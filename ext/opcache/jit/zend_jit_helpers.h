@@ -64,6 +64,7 @@ ZEND_FASTCALL zval* zend_jit_obj_proxy_div(zval *var_ptr, zval *value);
 ZEND_FASTCALL zval* zend_jit_obj_proxy_concat(zval *var_ptr, zval *value);
 ZEND_FASTCALL void zend_jit_helper_free_extra_args(zend_execute_data *call);
 ZEND_FASTCALL void zend_jit_helper_free_call_frame(void);
+ZEND_FASTCALL void* zend_jit_helper_arena_calloc(size_t size);
 
 #ifdef __cplusplus
 }

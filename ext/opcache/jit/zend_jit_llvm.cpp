@@ -12976,6 +12976,23 @@ static Value* zend_jit_arena_calloc(zend_llvm_ctx    &llvm_ctx,
 		llvm_ctx.builder.CreateZExtOrBitCast(
 			num,
 			LLVM_GET_LONG_TY(llvm_ctx.context)));
+#if 1
+	Function *_helper = zend_jit_get_helper(
+			llvm_ctx,
+			(void*)zend_jit_helper_arena_calloc,
+			ZEND_JIT_SYM("zend_jit_helper_arena_caloc"),
+			ZEND_JIT_HELPER_FAST_CALL,
+			PointerType::getUnqual(Type::getInt8Ty(llvm_ctx.context)),
+			LLVM_GET_LONG_TY(llvm_ctx.context),
+			NULL,
+			NULL,
+			NULL,
+			NULL);
+
+	CallInst *call = llvm_ctx.builder.CreateCall(_helper, msize);
+	call->setCallingConv(CallingConv::X86_FastCall);
+	return call;
+#else
 	Value *ret = zend_jit_arena_alloc(llvm_ctx, arena_ptr, msize, lineno);
 	//JIT: memset(ret, 0, size);
 	llvm_ctx.builder.CreateMemSet(
@@ -12984,6 +13001,7 @@ static Value* zend_jit_arena_calloc(zend_llvm_ctx    &llvm_ctx,
 		msize,
 		4);
 	return ret;
+#endif
 }
 /* }}} */
 
