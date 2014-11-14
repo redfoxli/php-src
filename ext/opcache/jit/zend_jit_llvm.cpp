@@ -15347,19 +15347,42 @@ static int zend_jit_recv(zend_llvm_ctx    &llvm_ctx,
 /* {{{ static void zend_jit_assign_regs */
 static int zend_jit_assign_regs(zend_llvm_ctx    &llvm_ctx,
                                 zend_op_array    *op_array)
-{
+{	
 	zend_jit_func_info *info = JIT_DATA(op_array);
 	int i;
 	Value *reg;
+	Value **tmp_reg = (Value**)alloca(sizeof(Value*) * op_array->last_var * 4);
 
+	memset(tmp_reg, 0, sizeof(Value*) * op_array->last_var * 4);
 	for (i = 0; i < info->ssa_vars; i++) {
 		if (info->ssa_var_info[i].type & MAY_BE_IN_REG) {
 			if (info->ssa_var_info[i].type & (MAY_BE_NULL|MAY_BE_FALSE|MAY_BE_TRUE)) {
-				reg = llvm_ctx.builder.CreateAlloca(Type::getInt32Ty(llvm_ctx.context));
+				if (info->ssa_var[i].var < op_array->last_var) {
+					if (!tmp_reg[info->ssa_var[i].var * 4 + 0]) {
+						tmp_reg[info->ssa_var[i].var * 4 + 0] = llvm_ctx.builder.CreateAlloca(Type::getInt32Ty(llvm_ctx.context));
+					}
+					reg = tmp_reg[info->ssa_var[i].var * 4 + 0];
+				} else {
+					reg = llvm_ctx.builder.CreateAlloca(Type::getInt32Ty(llvm_ctx.context));
+				}
 			} else if (info->ssa_var_info[i].type & MAY_BE_LONG) {
-				reg = llvm_ctx.builder.CreateAlloca(Type::LLVM_GET_LONG_TY(llvm_ctx.context));
+				if (info->ssa_var[i].var < op_array->last_var) {
+					if (!tmp_reg[info->ssa_var[i].var * 4 + 1]) {
+						tmp_reg[info->ssa_var[i].var * 4 + 1] = llvm_ctx.builder.CreateAlloca(Type::LLVM_GET_LONG_TY(llvm_ctx.context));
+					}
+					reg = tmp_reg[info->ssa_var[i].var * 4 + 1];
+				} else {
+					reg = llvm_ctx.builder.CreateAlloca(Type::LLVM_GET_LONG_TY(llvm_ctx.context));
+				}
 			} else if (info->ssa_var_info[i].type & MAY_BE_DOUBLE) {
-				reg = llvm_ctx.builder.CreateAlloca(Type::getDoubleTy(llvm_ctx.context));
+				if (info->ssa_var[i].var < op_array->last_var) {
+					if (!tmp_reg[info->ssa_var[i].var * 4 + 2]) {
+						tmp_reg[info->ssa_var[i].var * 4 + 2] = llvm_ctx.builder.CreateAlloca(Type::getDoubleTy(llvm_ctx.context));
+					}
+					reg = tmp_reg[info->ssa_var[i].var * 4 + 2];
+				} else {
+					reg = llvm_ctx.builder.CreateAlloca(Type::getDoubleTy(llvm_ctx.context));
+				}
 			} else if (info->ssa_var_info[i].type & MAY_BE_STRING) {
 				reg = llvm_ctx.builder.CreateAlloca(PointerType::getUnqual(llvm_ctx.zend_string_type));
 			} else if (info->ssa_var_info[i].type & MAY_BE_ARRAY) {
