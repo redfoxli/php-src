@@ -2663,14 +2663,34 @@ static int zend_jit_save_zval_type_info(zend_llvm_ctx &llvm_ctx,
 
 /* {{{ static Value* zend_jit_load_type_flags */
 static Value* zend_jit_load_type_flags(zend_llvm_ctx &llvm_ctx,
-                                      Value         *zval_addr)
+                                      Value         *zval_addr,
+                                      int            ssa_var,
+                                      uint32_t       info)
 {
-	return llvm_ctx.builder.CreateAlignedLoad(
-			zend_jit_GEP(
-				llvm_ctx,
-				zval_addr,
-				offsetof(zval,u1.v.type_flags),
-				PointerType::getUnqual(Type::getInt8Ty(llvm_ctx.context))), 1);
+	if ((info & MAY_BE_ANY) == MAY_BE_NULL) {
+		return llvm_ctx.builder.getInt8(0);
+	} else if ((info & MAY_BE_ANY) == MAY_BE_FALSE) {
+		return llvm_ctx.builder.getInt8(0);
+	} else if ((info & MAY_BE_ANY) == MAY_BE_TRUE) {
+		return llvm_ctx.builder.getInt8(0);
+	} else if ((info & MAY_BE_ANY) == MAY_BE_LONG) {
+		return llvm_ctx.builder.getInt8(0);
+	} else if ((info & MAY_BE_ANY) == MAY_BE_DOUBLE) {
+		return llvm_ctx.builder.getInt8(0);
+//	} else if ((info & MAY_BE_ANY) == MAY_BE_ARRAY) {
+//		return llvm_ctx.builder.getInt8(IS_ARRAY);
+	} else if ((info & MAY_BE_ANY) == MAY_BE_OBJECT) {
+		return llvm_ctx.builder.getInt8((IS_OBJECT_EX >> 8) & 0xff);
+//	} else if ((info & MAY_BE_ANY) == MAY_BE_STRING) {
+//		return llvm_ctx.builder.getInt8(IS_STRING);
+	} else if ((info & MAY_BE_ANY) == MAY_BE_RESOURCE) {
+		return llvm_ctx.builder.getInt8((IS_RESOURCE_EX >> 8) & 0xff);
+	}
+	return llvm_ctx.builder.CreateTruncOrBitCast(
+		llvm_ctx.builder.CreateLShr(
+			zend_jit_load_type_info(llvm_ctx, zval_addr, ssa_var, info),
+			llvm_ctx.builder.getInt32(8)),
+		Type::getInt8Ty(llvm_ctx.context));
 }
 /* }}} */
 
@@ -3961,7 +3981,7 @@ static int zend_jit_zval_dtor_ex(zend_llvm_ctx &llvm_ctx,
 			zend_jit_expected_br(llvm_ctx,
 				llvm_ctx.builder.CreateICmpEQ(
 					llvm_ctx.builder.CreateAnd(
-						zend_jit_load_type_flags(llvm_ctx, zval_addr),
+						zend_jit_load_type_flags(llvm_ctx, zval_addr, ssa_var, info),
 						llvm_ctx.builder.getInt8(IS_TYPE_REFCOUNTED)),
 					llvm_ctx.builder.getInt8(0)),
 				bb_finish,
@@ -4047,7 +4067,7 @@ static int zend_jit_zval_ptr_dtor_ex(zend_llvm_ctx &llvm_ctx,
 			zend_jit_expected_br(llvm_ctx,
 				llvm_ctx.builder.CreateICmpEQ(
 					llvm_ctx.builder.CreateAnd(
-						zend_jit_load_type_flags(llvm_ctx, zval_addr),
+						zend_jit_load_type_flags(llvm_ctx, zval_addr, ssa_var, info),
 						llvm_ctx.builder.getInt8(IS_TYPE_REFCOUNTED)),
 					llvm_ctx.builder.getInt8(0)),
 				bb_finish,
@@ -4090,7 +4110,7 @@ static int zend_jit_zval_ptr_dtor_ex(zend_llvm_ctx &llvm_ctx,
 				zend_jit_expected_br(llvm_ctx,
 					llvm_ctx.builder.CreateICmpNE(
 						llvm_ctx.builder.CreateAnd(
-							zend_jit_load_type_flags(llvm_ctx, zval_addr),
+							zend_jit_load_type_flags(llvm_ctx, zval_addr, ssa_var, info),
 							llvm_ctx.builder.getInt8(IS_TYPE_COLLECTABLE)),
 						llvm_ctx.builder.getInt8(0)),
 					bb_gc,
