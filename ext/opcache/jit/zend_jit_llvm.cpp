@@ -10486,31 +10486,51 @@ static int zend_jit_incdec(zend_llvm_ctx    &llvm_ctx,
 			//JIT: SEPARATE_ZVAL_NOREF(var_ptr);
 			zend_jit_separate_zval_noref(llvm_ctx, op1_addr, NULL, OP1_OP_TYPE(), OP1_OP(), OP1_SSA_VAR(), OP1_INFO(), opline);
 
-			//JIT: (in|de)crement_function(var_ptr);
-			Function *_helper = zend_jit_get_helper(
-					llvm_ctx,
-					opline->opcode == ZEND_PRE_INC ?
-						(void*)increment_function :
-						(void*)decrement_function,
-					opline->opcode == ZEND_PRE_INC ?
-						ZEND_JIT_SYM("increment_function") :
-						ZEND_JIT_SYM("decrement_function"),
-					0,
-					Type::getVoidTy(llvm_ctx.context),
-					llvm_ctx.zval_ptr_type,
-					NULL,
-					NULL,
-					NULL,
-					NULL);
+			if (OP1_MAY_BE(MAY_BE_ANY - (MAY_BE_LONG|MAY_BE_DOUBLE))) {
+				//JIT: (in|de)crement_function(var_ptr);
+				Function *_helper = zend_jit_get_helper(
+						llvm_ctx,
+						opline->opcode == ZEND_PRE_INC ?
+							(void*)increment_function :
+							(void*)decrement_function,
+						opline->opcode == ZEND_PRE_INC ?
+							ZEND_JIT_SYM("increment_function") :
+							ZEND_JIT_SYM("decrement_function"),
+						0,
+						Type::getVoidTy(llvm_ctx.context),
+						llvm_ctx.zval_ptr_type,
+						NULL,
+						NULL,
+						NULL,
+						NULL);
 
-			if (OP1_INFO() & (MAY_BE_IN_REG)) {
-				op1_addr = zend_jit_reload_from_reg(llvm_ctx, OP1_SSA_VAR(), OP1_INFO());
-			}
-			llvm_ctx.builder.CreateCall(_helper, op1_addr);
-			if (OP1_DEF_INFO() & (MAY_BE_IN_REG)) {
-				zend_jit_reload_to_reg(llvm_ctx,
-					op1_addr ? op1_addr : zend_jit_load_slot(llvm_ctx, opline->op1.var),
-					OP1_DEF_SSA_VAR(), OP1_DEF_INFO());
+				if (OP1_INFO() & (MAY_BE_IN_REG)) {
+					op1_addr = zend_jit_reload_from_reg(llvm_ctx, OP1_SSA_VAR(), OP1_INFO());
+				}
+				llvm_ctx.builder.CreateCall(_helper, op1_addr);
+				if (OP1_DEF_INFO() & (MAY_BE_IN_REG)) {
+					zend_jit_reload_to_reg(llvm_ctx,
+						op1_addr ? op1_addr : zend_jit_load_slot(llvm_ctx, opline->op1.var),
+						OP1_DEF_SSA_VAR(), OP1_DEF_INFO());
+				}
+			} else {
+				Value *dval = zend_jit_load_dval(llvm_ctx, op1_addr, OP1_SSA_VAR(), OP1_INFO());
+				if (opline->opcode == ZEND_PRE_INC || opline->opcode == ZEND_POST_INC) {
+					dval = llvm_ctx.builder.CreateFAdd(
+						dval,
+						llvm_ctx.builder.CreateSIToFP(
+							llvm_ctx.builder.getInt32(1),
+							Type::getDoubleTy(llvm_ctx.context)));
+				} else if (opline->opcode == ZEND_PRE_DEC || opline->opcode == ZEND_POST_DEC) {
+					dval = llvm_ctx.builder.CreateFSub(
+						dval,
+						llvm_ctx.builder.CreateSIToFP(
+							llvm_ctx.builder.getInt32(1),
+							Type::getDoubleTy(llvm_ctx.context)));
+				} else {
+					ASSERT_NOT_REACHED();
+				}
+				zend_jit_save_zval_dval(llvm_ctx, op1_addr, OP1_SSA_VAR(), OP1_INFO(), dval);
 			}
 
 			if (RETURN_VALUE_USED(opline)) {
@@ -10578,31 +10598,51 @@ static int zend_jit_incdec(zend_llvm_ctx    &llvm_ctx,
 				llvm_ctx.builder.SetInsertPoint(bb_op);
 			}
 			
-			//JIT: (in|de)crement_function(var_ptr);
-			Function *_helper = zend_jit_get_helper(
-					llvm_ctx,
-					opline->opcode == ZEND_POST_INC ?
-						(void*)increment_function :
-						(void*)decrement_function,
-					opline->opcode == ZEND_POST_INC ?
-						ZEND_JIT_SYM("increment_function") :
-						ZEND_JIT_SYM("decrement_function"),
-					0,
-					Type::getVoidTy(llvm_ctx.context),
-					llvm_ctx.zval_ptr_type,
-					NULL,
-					NULL,
-					NULL,
-					NULL);
+			if (OP1_MAY_BE(MAY_BE_ANY - (MAY_BE_LONG|MAY_BE_DOUBLE))) {
+				//JIT: (in|de)crement_function(var_ptr);
+				Function *_helper = zend_jit_get_helper(
+						llvm_ctx,
+						opline->opcode == ZEND_POST_INC ?
+							(void*)increment_function :
+							(void*)decrement_function,
+						opline->opcode == ZEND_POST_INC ?
+							ZEND_JIT_SYM("increment_function") :
+							ZEND_JIT_SYM("decrement_function"),
+						0,
+						Type::getVoidTy(llvm_ctx.context),
+						llvm_ctx.zval_ptr_type,
+						NULL,
+						NULL,
+						NULL,
+						NULL);
 
-			if (OP1_INFO() & (MAY_BE_IN_REG)) {
-				op1_addr = zend_jit_reload_from_reg(llvm_ctx, OP1_SSA_VAR(), OP1_INFO());
-			}
-			llvm_ctx.builder.CreateCall(_helper, op1_addr);
-			if (OP1_DEF_INFO() & (MAY_BE_IN_REG)) {
-				zend_jit_reload_to_reg(llvm_ctx,
-					op1_addr ? op1_addr : zend_jit_load_slot(llvm_ctx, opline->op1.var),
-					OP1_DEF_SSA_VAR(), OP1_DEF_INFO());
+				if (OP1_INFO() & (MAY_BE_IN_REG)) {
+					op1_addr = zend_jit_reload_from_reg(llvm_ctx, OP1_SSA_VAR(), OP1_INFO());
+				}
+				llvm_ctx.builder.CreateCall(_helper, op1_addr);
+				if (OP1_DEF_INFO() & (MAY_BE_IN_REG)) {
+					zend_jit_reload_to_reg(llvm_ctx,
+						op1_addr ? op1_addr : zend_jit_load_slot(llvm_ctx, opline->op1.var),
+						OP1_DEF_SSA_VAR(), OP1_DEF_INFO());
+				}
+			} else {
+				Value *dval = zend_jit_load_dval(llvm_ctx, op1_addr, OP1_SSA_VAR(), OP1_INFO());
+				if (opline->opcode == ZEND_PRE_INC || opline->opcode == ZEND_POST_INC) {
+					dval = llvm_ctx.builder.CreateFAdd(
+						dval,
+						llvm_ctx.builder.CreateSIToFP(
+							llvm_ctx.builder.getInt32(1),
+							Type::getDoubleTy(llvm_ctx.context)));
+				} else if (opline->opcode == ZEND_PRE_DEC || opline->opcode == ZEND_POST_DEC) {
+					dval = llvm_ctx.builder.CreateFSub(
+						dval,
+						llvm_ctx.builder.CreateSIToFP(
+							llvm_ctx.builder.getInt32(1),
+							Type::getDoubleTy(llvm_ctx.context)));
+				} else {
+					ASSERT_NOT_REACHED();
+				}
+				zend_jit_save_zval_dval(llvm_ctx, op1_addr, OP1_SSA_VAR(), OP1_INFO(), dval);
 			}
 
 			//JIT: FREE_OP1_VAR_PTR();
