@@ -15384,6 +15384,26 @@ static int zend_jit_recv(zend_llvm_ctx    &llvm_ctx,
 }
 /* }}} */
 
+/* {{{ static int zend_jit_free */
+static int zend_jit_free(zend_llvm_ctx    &llvm_ctx,
+                         zend_op_array    *op_array,
+                         zend_op          *opline)
+{
+	Value *op1_addr = zend_jit_load_operand(llvm_ctx,
+			OP1_OP_TYPE(), OP1_OP(), OP1_SSA_VAR(), OP1_INFO(), 0, opline);
+
+	if (!zend_jit_free_operand(llvm_ctx, opline->op1_type, op1_addr, NULL, OP1_SSA_VAR(), OP1_INFO(), opline->lineno)) return 0;
+
+	if (OP1_MAY_BE(MAY_BE_OBJECT|MAY_BE_RESOURCE|MAY_BE_ARRAY_OF_OBJECT|MAY_BE_ARRAY_OF_RESOURCE)) {
+		JIT_CHECK(zend_jit_check_exception(llvm_ctx, opline));
+	}
+
+	//JIT: ZEND_VM_NEXT_OPCODE();
+	llvm_ctx.valid_opline = 0;
+	return 1;
+}
+/* }}} */
+
 /* {{{ static void zend_jit_assign_regs */
 static int zend_jit_assign_regs(zend_llvm_ctx    &llvm_ctx,
                                 zend_op_array    *op_array)
@@ -15902,10 +15922,12 @@ static int zend_jit_codegen_ex(zend_jit_context *ctx,
 				case ZEND_PRINT:
 					if (!zend_jit_echo(llvm_ctx, ctx, op_array, opline, 1)) return 0;
 					break;
+#endif
 				case ZEND_FREE:
-				case ZEND_SWITCH_FREE:
 					if (!zend_jit_free(llvm_ctx, op_array, opline)) return 0;
 					break;
+//???
+#if 0
 				case ZEND_INIT_ARRAY:
 				case ZEND_ADD_ARRAY_ELEMENT:
 					if (!zend_jit_add_array_element(llvm_ctx, op_array, opline)) return 0;
@@ -16468,7 +16490,7 @@ int zend_opline_supports_jit(zend_op_array    *op_array,
 		case ZEND_ADD_VAR:
 //???		case ZEND_ECHO:
 //???		case ZEND_PRINT:
-//???		case ZEND_FREE:
+		case ZEND_FREE:
 //???		case ZEND_INIT_ARRAY:
 //???		case ZEND_ADD_ARRAY_ELEMENT:
 //???		case ZEND_FE_FETCH:
