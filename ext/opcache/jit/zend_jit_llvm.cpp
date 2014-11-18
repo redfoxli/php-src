@@ -15403,7 +15403,7 @@ static int zend_jit_write(zend_llvm_ctx    &llvm_ctx,
 		ZEND_JIT_HELPER_ARG1_NOALIAS | ZEND_JIT_HELPER_ARG1_NOCAPTURE,
 		Type::getVoidTy(llvm_ctx.context),
 		PointerType::getUnqual(Type::getInt8Ty(llvm_ctx.context)),
-		Type::getInt32Ty(llvm_ctx.context),
+		LLVM_GET_LONG_TY(llvm_ctx.context),
 		NULL,
 		NULL,
 		NULL);
