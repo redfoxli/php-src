@@ -10998,6 +10998,9 @@ static int zend_jit_send_ref(zend_llvm_ctx    &llvm_ctx,
 	op1_addr = zend_jit_load_operand_ptr(llvm_ctx,
 				OP1_OP_TYPE(), OP1_OP(), OP1_SSA_VAR(), OP1_INFO(), 0, opline, 0, BP_VAR_W,
 				&should_free);
+	if (OP1_MAY_BE(MAY_BE_IN_REG)) {
+		op1_addr = zend_jit_reload_from_reg(llvm_ctx, OP1_SSA_VAR(), OP1_INFO());
+	}
 
 	if (opline->op1_type == IS_VAR) {
 		BasicBlock *bb_error = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
@@ -11194,6 +11197,10 @@ static int zend_jit_send_var(zend_llvm_ctx    &llvm_ctx,
 	//JIT: value = GET_OP1_ZVAL_PTR(BP_VAR_R);
 	Value *op1_addr = zend_jit_load_operand(llvm_ctx,
 				OP1_OP_TYPE(), OP1_OP(), OP1_SSA_VAR(), OP1_INFO(), 0, opline);
+	if (OP1_MAY_BE(MAY_BE_IN_REG)) {
+		op1_addr = zend_jit_reload_from_reg(llvm_ctx, OP1_SSA_VAR(), OP1_INFO());
+	}
+
 	//JIT: arg = ZEND_CALL_ARG(EX(call), OP2_OP()->num);
 	Value *arg_addr = zend_jit_GEP(
 						llvm_ctx,
@@ -15457,6 +15464,9 @@ static int zend_jit_echo(zend_llvm_ctx    &llvm_ctx,
 			if (!llvm_ctx.valid_opline) {
 				JIT_CHECK(zend_jit_store_opline(llvm_ctx, opline, false));
 			}
+			if (OP1_MAY_BE(MAY_BE_IN_REG)) {
+				op1_addr = zend_jit_reload_from_reg(llvm_ctx, OP1_SSA_VAR(), OP1_INFO());
+			}
 			//JIT: str = zval_get_string(expr);
 			Value *str = zend_jit_zval_get_string_func(llvm_ctx, op1_addr);
 			//JIT: zend_write(str->val, str->len);
@@ -16589,6 +16599,8 @@ int zend_opline_supports_jit(zend_op_array    *op_array,
 		case ZEND_SEND_VAL:
 		case ZEND_SEND_VAL_EX:
 		case ZEND_SEND_VAR:
+		case ZEND_SEND_VAR_EX:
+		case ZEND_SEND_REF:
 		case ZEND_RECV:
 		case ZEND_RECV_INIT:
 		case ZEND_RETURN:
@@ -16607,8 +16619,6 @@ int zend_opline_supports_jit(zend_op_array    *op_array,
 			return 1;
 //???		case ZEND_FETCH_CONSTANT:
 //???			return (OP1_OP_TYPE() == IS_UNUSED && OP2_OP_TYPE() == IS_CONST);
-//???		case ZEND_SEND_REF:
-//???			return opline->extended_value == ZEND_DO_FCALL;
 //???		case ZEND_SEND_VAR_NO_REF:
 //???			return (opline->extended_value & (ZEND_ARG_COMPILE_TIME_BOUND|ZEND_ARG_SEND_BY_REF)) == ZEND_ARG_COMPILE_TIME_BOUND;
 		case ZEND_ASSIGN:
