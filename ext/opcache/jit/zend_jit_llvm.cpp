@@ -15384,6 +15384,115 @@ static int zend_jit_recv(zend_llvm_ctx    &llvm_ctx,
 }
 /* }}} */
 
+/* {{{ static int zend_jit_write */
+static int zend_jit_write(zend_llvm_ctx    &llvm_ctx,
+                          Value            *str,
+                          Value            *len)
+{
+	Function *helper = zend_jit_get_helper(
+		llvm_ctx,
+		(void*)zend_write,
+		ZEND_JIT_SYM("zend_write"),
+		ZEND_JIT_HELPER_ARG1_NOALIAS | ZEND_JIT_HELPER_ARG1_NOCAPTURE,
+		Type::getVoidTy(llvm_ctx.context),
+		PointerType::getUnqual(Type::getInt8Ty(llvm_ctx.context)),
+		Type::getInt32Ty(llvm_ctx.context),
+		NULL,
+		NULL,
+		NULL);
+	llvm_ctx.builder.CreateCall2(helper, str, len);
+	return 1;
+}
+/* }}} */
+
+/* {{{ static int zend_jit_echo */
+static int zend_jit_echo(zend_llvm_ctx    &llvm_ctx,
+                         zend_op_array    *op_array,
+                         zend_op          *opline)
+{
+	if (opline->op1_type == IS_CONST && Z_TYPE_P(opline->op1.zv) == IS_STRING) {
+		if (Z_STRLEN_P(opline->op1.zv) > 0) {
+			//JIT: zend_write(Z_STRVAL_P(z), Z_STRLEN_P(z));
+			zend_jit_write(llvm_ctx,
+				LLVM_GET_CONST_STRING(Z_STRVAL_P(opline->op1.zv)),
+				LLVM_GET_LONG(Z_STRLEN_P(opline->op1.zv)));
+				
+		}
+	} else {
+		BasicBlock *bb_convert = NULL;
+		BasicBlock *bb_common = NULL;
+
+	    //JIT: z = GET_OP1_ZVAL_PTR_DEREF(BP_VAR_R);
+		Value *op1_addr = zend_jit_load_operand(llvm_ctx,
+			OP1_OP_TYPE(), OP1_OP(), OP1_SSA_VAR(), OP1_INFO(), 0, opline);
+
+		if (OP1_MAY_BE(MAY_BE_STRING)) {
+			if (OP1_MAY_BE(MAY_BE_ANY - MAY_BE_STRING)) {
+				BasicBlock *bb_string = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+				bb_convert = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+				bb_common = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+				zend_jit_expected_br(llvm_ctx,
+						llvm_ctx.builder.CreateICmpEQ(
+							zend_jit_load_type(llvm_ctx, op1_addr, OP1_SSA_VAR(), OP1_INFO()),
+							llvm_ctx.builder.getInt8(IS_STRING)),
+						bb_string,
+						bb_convert);
+				llvm_ctx.builder.SetInsertPoint(bb_string);
+			}
+			//JIT: str = Z_STR_P(z);
+			Value *str = zend_jit_load_str(llvm_ctx, op1_addr, OP1_SSA_VAR(), OP1_INFO());
+			//JIT: zend_write(str->val, str->len);
+			zend_jit_write(llvm_ctx,
+				zend_jit_load_str_val(llvm_ctx, str),
+				zend_jit_load_str_len(llvm_ctx, str));
+			if (bb_common) {
+				llvm_ctx.builder.CreateBr(bb_common);
+			}
+		}	
+	
+		if (OP1_MAY_BE(MAY_BE_ANY - MAY_BE_STRING)) {
+			if (bb_convert) {
+				llvm_ctx.builder.SetInsertPoint(bb_convert);
+			}
+			if (!llvm_ctx.valid_opline) {
+				JIT_CHECK(zend_jit_store_opline(llvm_ctx, opline, false));
+			}
+			//JIT: str = zval_get_string(expr);
+			Value *str = zend_jit_zval_get_string_func(llvm_ctx, op1_addr);
+			//JIT: zend_write(str->val, str->len);
+			zend_jit_write(llvm_ctx,
+				zend_jit_load_str_val(llvm_ctx, str),
+				zend_jit_load_str_len(llvm_ctx, str));
+			//JIT: zend_string_release(str);
+			zend_jit_string_release(llvm_ctx, str);
+			if (bb_common) {
+				llvm_ctx.builder.CreateBr(bb_common);
+			}
+		}
+		if (bb_common) {
+			llvm_ctx.builder.SetInsertPoint(bb_common);
+		}
+
+		if (!zend_jit_free_operand(llvm_ctx, opline->op1_type, op1_addr, NULL, OP1_SSA_VAR(), OP1_INFO(), opline->lineno)) return 0;
+	}
+
+//???	if (may_threw) {
+		JIT_CHECK(zend_jit_check_exception(llvm_ctx, opline));
+//???	}
+
+	if (opline->opcode == ZEND_PRINT) {
+		//JIT: ZVAL_LONG(EX_VAR(opline->result.var), 1);
+		Value *res = zend_jit_load_tmp_zval(llvm_ctx, opline->result.var);
+		zend_jit_save_zval_type_info(llvm_ctx, res, RES_SSA_VAR(), RES_INFO(), llvm_ctx.builder.getInt32(IS_LONG));
+		zend_jit_save_zval_lval(llvm_ctx, res, RES_SSA_VAR(), RES_INFO(), LLVM_GET_LONG(1));
+	}
+
+	//JIT: ZEND_VM_NEXT_OPCODE();
+	llvm_ctx.valid_opline = 0;
+	return 1;
+}
+/* }}} */
+
 /* {{{ static int zend_jit_free */
 static int zend_jit_free(zend_llvm_ctx    &llvm_ctx,
                          zend_op_array    *op_array,
@@ -15916,13 +16025,11 @@ static int zend_jit_codegen_ex(zend_jit_context *ctx,
 				case ZEND_SEND_VAR_NO_REF:
 					if (!zend_jit_send_var_no_ref(llvm_ctx, op_array, opline)) return 0;
 					break;
-				case ZEND_ECHO:
-					if (!zend_jit_echo(llvm_ctx, ctx, op_array, opline, 0)) return 0;
-					break;
-				case ZEND_PRINT:
-					if (!zend_jit_echo(llvm_ctx, ctx, op_array, opline, 1)) return 0;
-					break;
 #endif
+				case ZEND_ECHO:
+				case ZEND_PRINT:
+					if (!zend_jit_echo(llvm_ctx, op_array, opline)) return 0;
+					break;
 				case ZEND_FREE:
 					if (!zend_jit_free(llvm_ctx, op_array, opline)) return 0;
 					break;
@@ -16488,8 +16595,8 @@ int zend_opline_supports_jit(zend_op_array    *op_array,
 		case ZEND_ADD_STRING:
 		case ZEND_ADD_CHAR:
 		case ZEND_ADD_VAR:
-//???		case ZEND_ECHO:
-//???		case ZEND_PRINT:
+		case ZEND_ECHO:
+		case ZEND_PRINT:
 		case ZEND_FREE:
 //???		case ZEND_INIT_ARRAY:
 //???		case ZEND_ADD_ARRAY_ELEMENT:
