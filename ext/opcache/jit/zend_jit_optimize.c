@@ -2085,6 +2085,8 @@ static int zend_jit_calc_range(zend_jit_context *ctx, zend_op_array *op_array, i
 							return 1;
 						}
 					}
+//TODO: we can't use type inference for internal functions at this point ???
+#if 0
 					type = zend_jit_get_func_info(call_info);
 					if (!(type & (MAY_BE_ANY - (MAY_BE_NULL|MAY_BE_FALSE|MAY_BE_TRUE|MAY_BE_LONG)))) {
 					    tmp->underflow = 0;
@@ -2102,6 +2104,7 @@ static int zend_jit_calc_range(zend_jit_context *ctx, zend_op_array *op_array, i
 						}
 					    return 1;
 					}
+#endif
 				}
 			}
 			break;
@@ -3822,12 +3825,20 @@ static void zend_jit_update_type_info(zend_jit_context *ctx,
 			}
 			break;
 		case ZEND_NEW:
-			UPDATE_SSA_TYPE(MAY_BE_DEF|MAY_BE_RC1|MAY_BE_RCN|MAY_BE_OBJECT, ssa[i].result_def);
-			if ((t1 & MAY_BE_CLASS) && ssa[i].op1_use >= 0 && ssa_var_info[ssa[i].op1_use].ce) {
+			tmp = MAY_BE_DEF|MAY_BE_RC1|MAY_BE_RCN|MAY_BE_OBJECT;
+			if (opline->op1_type == IS_CONST &&
+			    (ce = zend_hash_find_ptr(CG(class_table), Z_STR_P(opline->op1.zv+1))) != NULL) {
+			    if (ce->type == ZEND_INTERNAL_CLASS) {
+					//TODO: "new" for internal class may return NULL ???
+					tmp |= MAY_BE_NULL;
+			    }
+				UPDATE_SSA_OBJ_TYPE(ce, 0, ssa[i].result_def);
+			} else if ((t1 & MAY_BE_CLASS) && ssa[i].op1_use >= 0 && ssa_var_info[ssa[i].op1_use].ce) {
 				UPDATE_SSA_OBJ_TYPE(ssa_var_info[ssa[i].op1_use].ce, ssa_var_info[ssa[i].op1_use].is_instanceof, ssa[i].result_def);
 			} else {
 				UPDATE_SSA_OBJ_TYPE(NULL, 0, ssa[i].result_def);
 			}
+			UPDATE_SSA_TYPE(tmp, ssa[i].result_def);
 			break;
 		case ZEND_CLONE:
 			/* FIXME: For some reason "clone" return reference */
