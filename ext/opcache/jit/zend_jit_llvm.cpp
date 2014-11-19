@@ -2145,7 +2145,7 @@ static Value* zend_jit_dval_to_lval(zend_llvm_ctx &llvm_ctx,
 		llvm_ctx,
 		(void*)zend_jit_helper_dval_to_lval,
 		ZEND_JIT_SYM("zend_jit_helper_dval_to_lval"),
-		ZEND_JIT_HELPER_FAST_CALL,
+		0,
 		Type::LLVM_GET_LONG_TY(llvm_ctx.context),
 		Type::getDoubleTy(llvm_ctx.context),
 		NULL,
@@ -2154,7 +2154,6 @@ static Value* zend_jit_dval_to_lval(zend_llvm_ctx &llvm_ctx,
 		NULL);
 
 	CallInst *call = llvm_ctx.builder.CreateCall(_helper, dval);
-	call->setCallingConv(CallingConv::X86_FastCall);
 
 	return call;
 }
@@ -11604,6 +11603,22 @@ static int zend_jit_fetch_dim(zend_llvm_ctx     &llvm_ctx,
 	op1_addr = zend_jit_load_operand_addr(llvm_ctx,
 			OP1_OP_TYPE(), OP1_OP(), OP1_SSA_VAR(), OP1_INFO(), 0, opline, 0, fetch_type,
 	 		&should_free);
+
+	if (opline->op1_type == IS_VAR) {
+		BasicBlock *bb_error = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+		BasicBlock *bb_follow = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+		//JIT: if (UNEXPECTED(object_ptr == NULL)) {
+		zend_jit_unexpected_br(llvm_ctx,
+				llvm_ctx.builder.CreateIsNull(op1_addr),
+				bb_error,
+				bb_follow);
+		llvm_ctx.builder.SetInsertPoint(bb_error);
+		//JIT: zend_error_noreturn(E_ERROR, "Cannot use string offset as an array");
+		zend_jit_error_noreturn(llvm_ctx, opline, E_ERROR,
+				"Cannot use string offset as an array");
+		llvm_ctx.builder.SetInsertPoint(bb_follow);
+	}
+
 	var_ptr = zend_jit_deref(llvm_ctx, op1_addr, OP1_SSA_VAR(), OP1_INFO());
 
 	if (OP2_OP_TYPE() != IS_UNUSED) {
@@ -11727,7 +11742,7 @@ static int zend_jit_fetch_dim(zend_llvm_ctx     &llvm_ctx,
 		return 0;
 	}
 
-	if (fetch_type == BP_VAR_W && opline->op1_type == IS_VAR && should_free) {
+	if (opline->op1_type == IS_VAR && should_free) {
 		//JIT: if (READY_TO_DESTROY(free_op1)) {
 		BasicBlock *bb_follow = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 		BasicBlock *bb_skip = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);

@@ -61,7 +61,7 @@ ZEND_FASTCALL int zend_jit_helper_handle_numeric_str(zend_string *str, zend_ulon
 	return _zend_handle_numeric_str_ex(str->val, str->len, idx);
 }
 
-ZEND_FASTCALL zend_ulong zend_jit_helper_dval_to_lval(double dval) {
+zend_ulong zend_jit_helper_dval_to_lval(double dval) {
 	return zend_dval_to_lval(dval);
 }
 
