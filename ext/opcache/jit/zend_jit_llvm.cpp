@@ -10664,6 +10664,7 @@ static int zend_jit_incdec(zend_llvm_ctx    &llvm_ctx,
 		 || opline->opcode == ZEND_POST_DEC
 		 || RETURN_VALUE_USED(opline)) {
 			//JIT: ZVAL_NULL(EX_VAR(RES_OP()->var));
+			res = zend_jit_load_slot(llvm_ctx, RES_OP()->var);
 			zend_jit_save_zval_type_info(llvm_ctx, res, RES_SSA_VAR(), RES_INFO(), llvm_ctx.builder.getInt32(IS_NULL));
 		}
 		if (!bb_finish) {
@@ -13549,14 +13550,14 @@ static int zend_jit_isset_isempty_dim_obj(zend_llvm_ctx     &llvm_ctx,
 						bb_false,
 						bb_true);
 				llvm_ctx.builder.SetInsertPoint(bb_false);
-				if ((opline->extended_value & ZEND_ISSET) == 0) {
+				if (opline->extended_value & ZEND_ISSET) {
 					PHI_ADD(bool_val, llvm_ctx.builder.getInt32(IS_FALSE));
 				} else {
 					PHI_ADD(bool_val, llvm_ctx.builder.getInt32(IS_TRUE));
 				}
 				llvm_ctx.builder.CreateBr(bb_set);
 				llvm_ctx.builder.SetInsertPoint(bb_true);
-				if ((opline->extended_value & ZEND_ISSET) == 0) {
+				if (opline->extended_value & ZEND_ISSET) {
 					PHI_ADD(bool_val, llvm_ctx.builder.getInt32(IS_TRUE));
 				} else {
 					PHI_ADD(bool_val, llvm_ctx.builder.getInt32(IS_FALSE));
@@ -13580,10 +13581,10 @@ static int zend_jit_isset_isempty_dim_obj(zend_llvm_ctx     &llvm_ctx,
 						E_NOTICE,
 						"%s",
 						LLVM_GET_CONST_STRING("Trying to check element of non-array"));
-				if ((opline->extended_value & ZEND_ISSET) == 0) {
-					PHI_ADD(result, llvm_ctx.builder.getInt32(IS_TRUE));
-				} else {
+				if ((opline->extended_value & ZEND_ISSET)) {
 					PHI_ADD(result, llvm_ctx.builder.getInt32(IS_FALSE));
+				} else {
+					PHI_ADD(result, llvm_ctx.builder.getInt32(IS_TRUE));
 				}
 				if (!bb_finish) {
 					bb_finish = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
@@ -13770,7 +13771,7 @@ static int zend_jit_isset_isempty_dim_obj(zend_llvm_ctx     &llvm_ctx,
 				llvm_ctx.builder.SetInsertPoint(bb_follow);
 			}
 
-			if ((opline->extended_value & ZEND_ISSET) == 0) {
+			if (opline->extended_value & ZEND_ISSET) {
 				PHI_ADD(result, llvm_ctx.builder.getInt32(IS_FALSE));
 			} else {
 				PHI_ADD(result, llvm_ctx.builder.getInt32(IS_TRUE));
@@ -13835,14 +13836,14 @@ static int zend_jit_isset_isempty_dim_obj(zend_llvm_ctx     &llvm_ctx,
 					bb_false,
 					bb_true);
 			llvm_ctx.builder.SetInsertPoint(bb_false);
-			if ((opline->extended_value & ZEND_ISSET) == 0) {
+			if (opline->extended_value & ZEND_ISSET) {
 				PHI_ADD(bool_val, llvm_ctx.builder.getInt32(IS_FALSE));
 			} else {
 				PHI_ADD(bool_val, llvm_ctx.builder.getInt32(IS_TRUE));
 			}
 			llvm_ctx.builder.CreateBr(bb_set);
 			llvm_ctx.builder.SetInsertPoint(bb_true);
-			if ((opline->extended_value & ZEND_ISSET) == 0) {
+			if (opline->extended_value & ZEND_ISSET) {
 				PHI_ADD(bool_val, llvm_ctx.builder.getInt32(IS_TRUE));
 			} else {
 				PHI_ADD(bool_val, llvm_ctx.builder.getInt32(IS_FALSE));
@@ -13857,6 +13858,25 @@ static int zend_jit_isset_isempty_dim_obj(zend_llvm_ctx     &llvm_ctx,
 			}
 			llvm_ctx.builder.CreateBr(bb_finish);
 		}
+
+		if (bb_cont) {
+			llvm_ctx.builder.SetInsertPoint(bb_cont);
+			zend_jit_error(
+					llvm_ctx,
+					opline,
+					E_NOTICE,
+					"%s",
+					LLVM_GET_CONST_STRING("Trying to check element of non-array"));
+			if ((opline->extended_value & ZEND_ISSET)) {
+				PHI_ADD(result, llvm_ctx.builder.getInt32(IS_FALSE));
+			} else {
+				PHI_ADD(result, llvm_ctx.builder.getInt32(IS_TRUE));
+			}
+			if (!bb_finish) {
+				bb_finish = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+			}
+			llvm_ctx.builder.CreateBr(bb_finish);
+		}
 	}
 
 	if (bb_finish) {
@@ -13866,6 +13886,16 @@ static int zend_jit_isset_isempty_dim_obj(zend_llvm_ctx     &llvm_ctx,
 
 		res = zend_jit_load_tmp_zval(llvm_ctx, RES_OP()->var);
 		zend_jit_save_zval_type_info(llvm_ctx, res, RES_SSA_VAR(), RES_INFO(), result);
+	}
+
+	if (!zend_jit_free_operand(llvm_ctx, OP2_OP_TYPE(), op2_addr, NULL, OP2_SSA_VAR(), OP2_INFO(), opline->lineno))
+	{
+		return 0;
+	}
+
+	if (!zend_jit_free_operand(llvm_ctx, OP1_OP_TYPE(), op1_addr, NULL, OP1_SSA_VAR(), OP1_INFO(), opline->lineno))
+	{
+		return 0;
 	}
 
 	llvm_ctx.valid_opline = 0;
@@ -17833,7 +17863,6 @@ int zend_opline_supports_jit(zend_op_array    *op_array,
 //???		case ZEND_INIT_ARRAY:
 //???		case ZEND_ADD_ARRAY_ELEMENT:
 //???		case ZEND_FE_FETCH:
-//???		case ZEND_ISSET_ISEMPTY_DIM_OBJ:
 //???		case ZEND_ISSET_ISEMPTY_PROP_OBJ:
 		case ZEND_INIT_FCALL:
 		case ZEND_PRE_INC:
@@ -17851,7 +17880,8 @@ int zend_opline_supports_jit(zend_op_array    *op_array,
 			return (OP1_OP_TYPE() == IS_CV);
 //???		case ZEND_FETCH_OBJ_W:
 //???		case ZEND_FETCH_OBJ_RW:
-//???			return (OP1_OP_TYPE() == IS_CV || OP1_OP_TYPE() == IS_UNUSED);
+		case ZEND_ISSET_ISEMPTY_DIM_OBJ:
+			return (OP1_OP_TYPE() == IS_CV || OP1_OP_TYPE() == IS_UNUSED);
 //???		case ZEND_FETCH_OBJ_R:
 		case ZEND_ASSIGN_OBJ:
 			return (OP1_OP_TYPE() != IS_VAR);
