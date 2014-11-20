@@ -13075,7 +13075,17 @@ static int zend_jit_isset_isempty_dim_obj(zend_llvm_ctx     &llvm_ctx,
 					val = zend_jit_hash_find(llvm_ctx, ht, str);
 				} else if (hval) {
 					val = zend_jit_hash_index_find(llvm_ctx, ht, hval);
-				} 
+				} else {
+					if (opline->extended_value & ZEND_ISSET) {
+						PHI_ADD(result, llvm_ctx.builder.getInt32(IS_FALSE));
+					} else {
+						PHI_ADD(result, llvm_ctx.builder.getInt32(IS_TRUE));
+					}
+					if (!bb_finish) {
+						bb_finish = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+					}
+					llvm_ctx.builder.CreateBr(bb_finish);
+				}
 			} else {
 				PHI_DCL(str_offset, 2);
 				PHI_DCL(num_index, 6);
