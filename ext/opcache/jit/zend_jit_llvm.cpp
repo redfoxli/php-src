@@ -11519,16 +11519,20 @@ static int zend_jit_send_var_no_ref(zend_llvm_ctx    &llvm_ctx,
 static int zend_jit_fetch_dim_r(zend_llvm_ctx     &llvm_ctx,
                                 zend_jit_context  *ctx,
                                 zend_op_array     *op_array,
-                                zend_op           *opline)
+                                zend_op           *opline,
+                                zend_uchar         fetch_type)
 {
 	Value *var_ptr = NULL;
 	Value *dim_ptr = NULL;
 	Value *result = NULL;
 	zend_bool may_threw = 0;
 
-	result = zend_jit_load_slot(llvm_ctx, RES_OP()->var);
+	var_ptr = zend_jit_load_operand(llvm_ctx,
+				OP1_OP_TYPE(), OP1_OP(), OP1_SSA_VAR(), OP1_INFO(), 0, opline, 0, fetch_type);
+	dim_ptr = zend_jit_load_operand(llvm_ctx,
+				OP2_OP_TYPE(), OP2_OP(), OP2_SSA_VAR(), OP2_INFO(), 0, opline);
 
-	zend_jit_load_operands(llvm_ctx, op_array, opline, &var_ptr, &dim_ptr);
+	result = zend_jit_load_slot(llvm_ctx, RES_OP()->var);
 
 	Value *ret = zend_jit_fetch_dimension_address_read(
 			llvm_ctx,
@@ -11541,7 +11545,7 @@ static int zend_jit_fetch_dim_r(zend_llvm_ctx     &llvm_ctx,
 			OP2_INFO(),
 			OP2_OP(),
 			OP2_OP_TYPE(),
-			BP_VAR_R,
+			fetch_type,
 			opline, 
 			&may_threw);
 
@@ -17238,7 +17242,10 @@ static int zend_jit_codegen_ex(zend_jit_context *ctx,
 					if (!zend_jit_fetch_dim(llvm_ctx, ctx, op_array, opline, BP_VAR_W)) return 0;
 					break;
 				case ZEND_FETCH_DIM_R:
-					if (!zend_jit_fetch_dim_r(llvm_ctx, ctx, op_array, opline)) return 0;
+					if (!zend_jit_fetch_dim_r(llvm_ctx, ctx, op_array, opline, BP_VAR_R)) return 0;
+					break;
+				case ZEND_FETCH_DIM_IS:
+					if (!zend_jit_fetch_dim_r(llvm_ctx, ctx, op_array, opline, BP_VAR_IS)) return 0;
 					break;
 				case ZEND_FETCH_DIM_RW:
 					if (!zend_jit_fetch_dim(llvm_ctx, ctx, op_array, opline, BP_VAR_RW)) return 0;
@@ -17897,6 +17904,7 @@ int zend_opline_supports_jit(zend_op_array    *op_array,
 		case ZEND_POST_INC:
 		case ZEND_POST_DEC:
 		case ZEND_FETCH_DIM_R:
+		case ZEND_FETCH_DIM_IS:
 		case ZEND_FETCH_DIM_W:
 		case ZEND_FETCH_DIM_RW:
 		case ZEND_ASSIGN_DIM:
