@@ -5560,6 +5560,9 @@ numeric_dim:
 
 /* {{{ static Value* zend_jit_str_offset_index */
 static Value* zend_jit_str_offset_index(zend_llvm_ctx &llvm_ctx,
+                                        Value         *container,
+                                        int            container_ssa,
+                                        uint32_t       container_info,
                                         Value         *dim,
                                         int            dim_ssa,
                                         uint32_t       dim_info,
@@ -5665,6 +5668,49 @@ static Value* zend_jit_str_offset_index(zend_llvm_ctx &llvm_ctx,
 	}
 
 	PHI_SET(index, str_index, LLVM_GET_LONG_TY(llvm_ctx.context));
+
+	if (container) {
+		Value *refcount;
+		Value *container_type_info = zend_jit_load_type_info(llvm_ctx, container, container_ssa, container_info);
+		BasicBlock *bb_refounted = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+		BasicBlock *bb_cont = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+
+		zend_jit_expected_br(
+				llvm_ctx,
+				llvm_ctx.builder.CreateICmpNE(
+					llvm_ctx.builder.CreateAnd(
+						container_type_info,
+						llvm_ctx.builder.getInt32(IS_TYPE_REFCOUNTED << Z_TYPE_FLAGS_SHIFT)),
+					llvm_ctx.builder.getInt32(0)),
+				bb_refounted,
+				bb_cont);
+
+		llvm_ctx.builder.SetInsertPoint(bb_refounted);
+		if (container_info & MAY_BE_RCN) {
+			BasicBlock *bb_rcn = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+			BasicBlock *bb_rc1 = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+			refcount = zend_jit_load_counted(llvm_ctx, container, container_ssa, container_info);
+			zend_jit_unexpected_br(llvm_ctx,				
+					llvm_ctx.builder.CreateICmpSGT(
+						llvm_ctx.builder.CreateAlignedLoad(
+							zend_jit_refcount_addr(llvm_ctx, refcount), 4),
+						llvm_ctx.builder.getInt32(1)),
+					bb_rcn,
+					bb_rc1);
+			llvm_ctx.builder.SetInsertPoint(bb_rcn);
+			zend_jit_delref(llvm_ctx, container);
+			//???update reg value?
+			zend_jit_copy_ctor_func(llvm_ctx, container, opline->lineno);
+			llvm_ctx.builder.CreateBr(bb_rc1);
+			llvm_ctx.builder.SetInsertPoint(bb_rc1);
+		}
+
+		refcount = zend_jit_load_counted(llvm_ctx, container, container_ssa, container_info);
+		zend_jit_addref(llvm_ctx, refcount);
+
+		llvm_ctx.builder.CreateBr(bb_cont);
+		llvm_ctx.builder.SetInsertPoint(bb_cont);
+	}
 
 	return str_index;
 }
@@ -5799,6 +5845,9 @@ static Value* zend_jit_fetch_dimension_address_read(zend_llvm_ctx     &llvm_ctx,
 
 		index = zend_jit_str_offset_index(
 			llvm_ctx,
+			NULL,
+			-1,
+			-1,
 			dim,
 			dim_ssa,
 			dim_info,
@@ -6259,6 +6308,9 @@ static Value* zend_jit_fetch_dimension_address(zend_llvm_ctx     &llvm_ctx,
 		} else {
 			Value *index = zend_jit_str_offset_index(
 					llvm_ctx,
+					container,
+					container_ssa,
+					container_info,
 					dim,
 					dim_ssa,
 					dim_info,
