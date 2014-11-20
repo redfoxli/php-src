@@ -4164,6 +4164,17 @@ static void zend_jit_update_type_info(zend_jit_context *ctx,
 		case ZEND_FETCH_CONSTANT:
 			UPDATE_SSA_TYPE(MAY_BE_DEF|MAY_BE_RC1|MAY_BE_NULL|MAY_BE_FALSE|MAY_BE_TRUE|MAY_BE_LONG|MAY_BE_DOUBLE|MAY_BE_STRING|MAY_BE_RESOURCE, ssa[i].result_def);
 			break;
+		case ZEND_STRLEN:
+			tmp = MAY_BE_DEF|MAY_BE_RC1|MAY_BE_LONG;
+			if (t1 & (MAY_BE_ANY - (MAY_BE_NULL|MAY_BE_FALSE|MAY_BE_TRUE|MAY_BE_LONG|MAY_BE_DOUBLE|MAY_BE_STRING|MAY_BE_OBJECT))) {
+				tmp |= MAY_BE_NULL;
+			}
+			UPDATE_SSA_TYPE(tmp, ssa[i].result_def);
+			break;
+		case ZEND_TYPE_CHECK:
+		case ZEND_DEFINED:
+			UPDATE_SSA_TYPE(MAY_BE_DEF|MAY_BE_RC1|MAY_BE_FALSE|MAY_BE_TRUE, ssa[i].result_def);
+			break;
 		default:
 unknown_opcode:
 			if (ssa[i].op1_def >= 0) {
