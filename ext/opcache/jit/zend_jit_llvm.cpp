@@ -13913,6 +13913,7 @@ static int zend_jit_isset_isempty_dim_obj(zend_llvm_ctx     &llvm_ctx,
 		return 0;
 	}
 
+	JIT_CHECK(zend_jit_check_exception(llvm_ctx, opline));
 	llvm_ctx.valid_opline = 0;
 	return 1;
 }
