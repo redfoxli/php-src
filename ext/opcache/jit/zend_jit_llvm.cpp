@@ -12990,6 +12990,7 @@ static int zend_jit_isset_isempty_dim_obj(zend_llvm_ctx     &llvm_ctx,
 	Value *container;
 	Value *offset;
 	Value *result;
+	Value *should_free = NULL;
 	Value *op1_addr = NULL;
 	Value *op2_addr = NULL;
 	Value *op1_type = NULL;
@@ -12998,12 +12999,9 @@ static int zend_jit_isset_isempty_dim_obj(zend_llvm_ctx     &llvm_ctx,
 	BasicBlock *bb_finish = NULL;
 	PHI_DCL(result, 16);
 
-	if (OP1_OP_TYPE() != IS_CV && OP1_OP_TYPE() != IS_UNUSED) {
-		return zend_jit_handler(llvm_ctx, opline);
-	}
-
-	op1_addr = zend_jit_load_operand(llvm_ctx,
-			OP1_OP_TYPE(), OP1_OP(), OP1_SSA_VAR(), OP1_INFO(), 0, opline, 1, BP_VAR_IS);
+	op1_addr = zend_jit_load_operand_addr(llvm_ctx,
+ 		OP1_OP_TYPE(), OP1_OP(), OP1_SSA_VAR(), OP1_INFO(), 0, opline, 1, BP_VAR_IS,
+ 		&should_free);
 	container = zend_jit_deref(llvm_ctx, op1_addr, OP1_SSA_VAR(), OP1_INFO());
 
 	op2_addr = zend_jit_load_operand(llvm_ctx, OP2_OP_TYPE(), OP2_OP(), OP2_SSA_VAR(), OP2_INFO(), 0, opline);
@@ -13920,9 +13918,9 @@ static int zend_jit_isset_isempty_dim_obj(zend_llvm_ctx     &llvm_ctx,
 		return 0;
 	}
 
-	if (!zend_jit_free_operand(llvm_ctx, OP1_OP_TYPE(), op1_addr, NULL, OP1_SSA_VAR(), OP1_INFO(), opline->lineno))
-	{
-		return 0;
+	//JIT: FREE_OP1_VAR_PTR();
+	if (opline->op1_type == IS_VAR && should_free) {
+		zend_jit_free_var_ptr(llvm_ctx, should_free, OP1_SSA_VAR(), OP1_INFO(), opline);
 	}
 
 	JIT_CHECK(zend_jit_check_exception(llvm_ctx, opline));
@@ -17892,6 +17890,7 @@ int zend_opline_supports_jit(zend_op_array    *op_array,
 //???		case ZEND_ADD_ARRAY_ELEMENT:
 //???		case ZEND_FE_FETCH:
 //???		case ZEND_ISSET_ISEMPTY_PROP_OBJ:
+		case ZEND_ISSET_ISEMPTY_DIM_OBJ:
 		case ZEND_INIT_FCALL:
 		case ZEND_PRE_INC:
 		case ZEND_PRE_DEC:
@@ -17908,8 +17907,6 @@ int zend_opline_supports_jit(zend_op_array    *op_array,
 			return (OP1_OP_TYPE() == IS_CV);
 //???		case ZEND_FETCH_OBJ_W:
 //???		case ZEND_FETCH_OBJ_RW:
-		case ZEND_ISSET_ISEMPTY_DIM_OBJ:
-			return (OP1_OP_TYPE() == IS_CV || OP1_OP_TYPE() == IS_UNUSED);
 //???		case ZEND_FETCH_OBJ_R:
 		case ZEND_ASSIGN_OBJ:
 			return (OP1_OP_TYPE() != IS_VAR);
