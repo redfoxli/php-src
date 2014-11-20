@@ -12533,6 +12533,8 @@ static int zend_jit_assign_dim(zend_llvm_ctx     &llvm_ctx,
 		zend_jit_free_var_ptr(llvm_ctx, should_free, OP1_SSA_VAR(), OP1_INFO(), opline);
 	}
 
+	JIT_CHECK(zend_jit_check_exception(llvm_ctx, opline));
+
 	llvm_ctx.valid_opline = 0;
 	return 1;
 }
