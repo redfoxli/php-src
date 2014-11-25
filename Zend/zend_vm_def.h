@@ -3537,20 +3537,15 @@ ZEND_VM_HANDLER(64, ZEND_RECV_INIT, ANY, CONST)
 {
 	USE_OPLINE
 	uint32_t arg_num = opline->op1.num;
-	zval *param, default_val = {{0}};
+	zval *param;
 
 	SAVE_OPLINE();
-	if (Z_OPT_CONSTANT_P(opline->op2.zv)) {
-		ZVAL_COPY_VALUE(&default_val, opline->op2.zv);
-		zval_update_constant(&default_val, 0 TSRMLS_CC);
-	}
-
 	param = _get_zval_ptr_cv_undef_BP_VAR_W(execute_data, opline->result.var TSRMLS_CC);
 	if (arg_num > EX(num_args)) {
-		if (Z_TYPE(default_val) != IS_UNDEF) {
-			*param = default_val;
+		ZVAL_COPY_VALUE(param, opline->op2.zv);
+		if (Z_OPT_CONSTANT_P(param)) {
+			zval_update_constant(param, 0 TSRMLS_CC);
 		} else {
-			ZVAL_COPY_VALUE(param, opline->op2.zv);
 			/* IS_CONST can't be IS_OBJECT, IS_RESOURCE or IS_REFERENCE */
 			if (UNEXPECTED(Z_OPT_COPYABLE_P(param))) {
 				zval_copy_ctor_func(param);
@@ -3559,11 +3554,7 @@ ZEND_VM_HANDLER(64, ZEND_RECV_INIT, ANY, CONST)
 	}
 
 	if (UNEXPECTED((EX(func)->op_array.fn_flags & ZEND_ACC_HAS_TYPE_HINTS) != 0)) {
-		zend_verify_arg_type(EX(func), arg_num, param, Z_TYPE(default_val) == IS_UNDEF ? NULL : &default_val TSRMLS_CC);
-	}
-
-	if (Z_TYPE(default_val) != IS_UNDEF && arg_num <= EX(num_args)) {
-		zval_dtor(&default_val);
+		zend_verify_arg_type(EX(func), arg_num, param, opline->op2.zv TSRMLS_CC);
 	}
 
 	CHECK_EXCEPTION();

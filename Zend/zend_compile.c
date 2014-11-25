@@ -3831,15 +3831,10 @@ void zend_compile_params(zend_ast *ast TSRMLS_DC) /* {{{ */
 		arg_info->class_name_len = 0;
 
 		if (type_ast) {
-			zend_bool has_null_default = 0;
-
-			if (default_ast) {
-				if (!(has_null_default = (Z_TYPE(default_node.u.constant) == IS_NULL || (Z_TYPE(default_node.u.constant) == IS_CONSTANT && strcasecmp(Z_STRVAL(default_node.u.constant), "NULL") == 0)))) {
-					if (Z_OPT_CONSTANT(default_node.u.constant)) {
-						has_null_default = 2;
-					}
-				}
-			}
+			zend_bool has_null_default = default_ast
+				&& (Z_TYPE(default_node.u.constant) == IS_NULL
+					|| (Z_TYPE(default_node.u.constant) == IS_CONSTANT
+						&& strcasecmp(Z_STRVAL(default_node.u.constant), "NULL") == 0));
 
 			op_array->fn_flags |= ZEND_ACC_HAS_TYPE_HINTS;
 			arg_info->allow_null = has_null_default;
@@ -3849,12 +3844,13 @@ void zend_compile_params(zend_ast *ast TSRMLS_DC) /* {{{ */
 				if (arg_info->type_hint == IS_ARRAY) {
 					if (default_ast && !has_null_default
 						&& Z_TYPE(default_node.u.constant) != IS_ARRAY
+						&& !Z_CONSTANT(default_node.u.constant)
 					) {
 						zend_error_noreturn(E_COMPILE_ERROR, "Default value for parameters "
 							"with array type hint can only be an array or NULL");
 					}
 				} else if (arg_info->type_hint == IS_CALLABLE && default_ast) {
-					if (!has_null_default) {
+					if (!has_null_default && !Z_CONSTANT(default_node.u.constant)) {
 						zend_error_noreturn(E_COMPILE_ERROR, "Default value for parameters "
 							"with callable type hint can only be NULL");
 					}
@@ -3874,7 +3870,7 @@ void zend_compile_params(zend_ast *ast TSRMLS_DC) /* {{{ */
 
 				zend_string_release(class_name);
 
-				if (default_ast && !has_null_default) {
+				if (default_ast && !has_null_default && !Z_CONSTANT(default_node.u.constant)) {
 						zend_error_noreturn(E_COMPILE_ERROR, "Default value for parameters "
 							"with a class type hint can only be NULL");
 				}
