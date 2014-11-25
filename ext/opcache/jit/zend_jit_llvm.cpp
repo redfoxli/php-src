@@ -7253,14 +7253,20 @@ static void zend_jit_assign_to_object(zend_llvm_ctx     &llvm_ctx,
                                       zend_op           *opline,
                                       zend_bool         *may_threw)
 {
+	Value *orig_value;
 	Value *value;
 	BasicBlock *bb_finish = NULL;
 	BasicBlock *bb_follow = NULL;
 	int value_ssa_var = OP1_DATA_SSA_VAR();
 	int value_info = OP1_DATA_INFO();
 
-	value = zend_jit_load_operand(llvm_ctx, 
+	orig_value = zend_jit_load_operand(llvm_ctx, 
 			OP1_DATA_OP_TYPE(), OP1_DATA_OP(), value_ssa_var, value_info, 0, opline);
+	if (OP1_DATA_OP_TYPE() == IS_VAR || OP1_DATA_OP_TYPE() == IS_CV) {
+		value = zend_jit_deref(llvm_ctx, orig_value, value_ssa_var, value_info);
+	} else {
+		value = orig_value;
+	}
 
  	//JIT: ZVAL_DEREF(object);
 	container = zend_jit_deref(llvm_ctx, container, container_ssa_var, container_info);
@@ -7660,7 +7666,7 @@ static void zend_jit_assign_to_object(zend_llvm_ctx     &llvm_ctx,
 	zend_jit_zval_ptr_dtor_ex(llvm_ctx, value, NULL, value_ssa_var, value_info, opline->lineno, 1);
 	if (OP1_DATA_OP_TYPE() == IS_VAR) {
 		if (!zend_jit_free_operand(llvm_ctx,
-					OP1_DATA_OP_TYPE(), value, NULL, value_ssa_var, value_info, opline->lineno)) {
+					OP1_DATA_OP_TYPE(), orig_value, NULL, value_ssa_var, value_info, opline->lineno)) {
 			/* return 0; */
 		}
 	}
