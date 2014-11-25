@@ -3411,9 +3411,13 @@ static void zend_jit_update_type_info(zend_jit_context *ctx,
 				}
 			}
 			if ((t1 & MAY_BE_ANY) == MAY_BE_LONG) {
-			    if (!ssa_var_info[ssa[i].op1_def].has_range ||
-			         ssa_var_info[ssa[i].op1_def].range.underflow ||
-			         ssa_var_info[ssa[i].op1_def].range.overflow) {
+			    if (!ssa_var_info[ssa[i].op1_use].has_range ||
+			         (opline->opcode == ZEND_PRE_DEC &&
+			          (ssa_var_info[ssa[i].op1_use].range.underflow ||
+			           ssa_var_info[ssa[i].op1_use].range.min == LONG_MIN)) ||
+			         (opline->opcode == ZEND_PRE_INC &&
+			          (ssa_var_info[ssa[i].op1_use].range.overflow ||
+			           ssa_var_info[ssa[i].op1_use].range.min == LONG_MAX))) {
 					/* may overflow */
 					tmp |= MAY_BE_LONG | MAY_BE_DOUBLE;
 				} else {
@@ -3455,9 +3459,13 @@ static void zend_jit_update_type_info(zend_jit_context *ctx,
 				tmp |= MAY_BE_RC1;
 			}
 			if ((t1 & MAY_BE_ANY) == MAY_BE_LONG) {
-			    if (!ssa_var_info[ssa[i].op1_def].has_range ||
-			         ssa_var_info[ssa[i].op1_def].range.underflow ||
-			         ssa_var_info[ssa[i].op1_def].range.overflow) {
+			    if (!ssa_var_info[ssa[i].op1_use].has_range ||
+			         (opline->opcode == ZEND_PRE_DEC &&
+			          (ssa_var_info[ssa[i].op1_use].range.underflow ||
+			           ssa_var_info[ssa[i].op1_use].range.min == LONG_MIN)) ||
+			         (opline->opcode == ZEND_PRE_INC &&
+			          (ssa_var_info[ssa[i].op1_use].range.overflow ||
+			           ssa_var_info[ssa[i].op1_use].range.min == LONG_MAX))) {
 					/* may overflow */
 					tmp |= MAY_BE_LONG | MAY_BE_DOUBLE;
 				} else {
