@@ -278,7 +278,7 @@ PHP_FUNCTION(password_verify)
 	}
 	
 	/* We're using this method instead of == in order to provide
-	 * resistence towards timing attacks. This is a constant time
+	 * resistance towards timing attacks. This is a constant time
 	 * equality check that will always check every byte of both
 	 * values. */
 	for (i = 0; i < hash_len; i++) {
@@ -384,6 +384,7 @@ PHP_FUNCTION(password_hash)
 			efree(hash_format);
 			efree(buffer);
 			php_error_docref(NULL TSRMLS_CC, E_WARNING, "Supplied salt is too long");
+			RETURN_NULL();
 		} else if (buffer_len < required_salt_len) {
 			efree(hash_format);
 			efree(buffer);
