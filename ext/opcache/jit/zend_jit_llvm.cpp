@@ -11153,6 +11153,7 @@ static int zend_jit_send_ref(zend_llvm_ctx    &llvm_ctx,
 	op1_addr = zend_jit_load_operand_addr(llvm_ctx,
 				OP1_OP_TYPE(), OP1_OP(), OP1_SSA_VAR(), OP1_INFO(), 0, opline, 0, BP_VAR_W,
 				&should_free);
+
 	if (OP1_MAY_BE(MAY_BE_IN_REG)) {
 		op1_addr = zend_jit_reload_from_reg(llvm_ctx, OP1_SSA_VAR(), OP1_INFO());
 	}
@@ -11660,6 +11661,10 @@ static int zend_jit_fetch_dim(zend_llvm_ctx     &llvm_ctx,
 	op1_addr = zend_jit_load_operand_addr(llvm_ctx,
 			OP1_OP_TYPE(), OP1_OP(), OP1_SSA_VAR(), OP1_INFO(), 0, opline, 0, fetch_type,
 	 		&should_free);
+
+	if (OP1_MAY_BE(MAY_BE_IN_REG)) {
+		op1_addr = zend_jit_reload_from_reg(llvm_ctx, OP1_SSA_VAR(), OP1_INFO());
+	}
 
 	if (opline->op1_type == IS_VAR) {
 		BasicBlock *bb_error = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
@@ -12264,6 +12269,10 @@ static int zend_jit_assign_dim(zend_llvm_ctx     &llvm_ctx,
 	op1_addr = zend_jit_load_operand_addr(llvm_ctx,
  		OP1_OP_TYPE(), OP1_OP(), OP1_SSA_VAR(), OP1_INFO(), 0, opline, 0, BP_VAR_W,
  		&should_free);
+
+	if (OP1_MAY_BE(MAY_BE_IN_REG)) {
+		op1_addr = zend_jit_reload_from_reg(llvm_ctx, OP1_SSA_VAR(), OP1_INFO());
+	}
 
 	if (opline->op1_type == IS_VAR) {
 		BasicBlock *bb_error = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
