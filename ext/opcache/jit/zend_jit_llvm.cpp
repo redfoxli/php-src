@@ -10473,6 +10473,9 @@ static int zend_jit_incdec(zend_llvm_ctx    &llvm_ctx,
 						bb_overflow,
 						bb_ok);
 					llvm_ctx.builder.SetInsertPoint(bb_overflow);
+					if (!op1_addr) {
+						op1_addr = zend_jit_load_slot(llvm_ctx, OP1_OP()->var);
+					}
 #if defined(__x86_64__)
 					zend_jit_save_zval_lval(llvm_ctx,
 						op1_addr, OP1_DEF_SSA_VAR(), OP1_DEF_INFO(),
@@ -10544,6 +10547,9 @@ static int zend_jit_incdec(zend_llvm_ctx    &llvm_ctx,
 						bb_overflow,
 						bb_ok);
 					llvm_ctx.builder.SetInsertPoint(bb_overflow);
+					if (!op1_addr) {
+						op1_addr = zend_jit_load_slot(llvm_ctx, OP1_OP()->var);
+					}
 #if defined(__x86_64__)
 					zend_jit_save_zval_lval(llvm_ctx,
 						op1_addr, OP1_DEF_SSA_VAR(), OP1_DEF_INFO(),
@@ -10619,6 +10625,9 @@ static int zend_jit_incdec(zend_llvm_ctx    &llvm_ctx,
 						bb_overflow,
 						bb_ok);
 					llvm_ctx.builder.SetInsertPoint(bb_overflow);
+					if (!op1_addr) {
+						op1_addr = zend_jit_load_slot(llvm_ctx, OP1_OP()->var);
+					}
 #if defined(__x86_64__)
 					zend_jit_save_zval_lval(llvm_ctx,
 						op1_addr, OP1_DEF_SSA_VAR(), OP1_DEF_INFO(),
@@ -10667,6 +10676,9 @@ static int zend_jit_incdec(zend_llvm_ctx    &llvm_ctx,
 						bb_overflow,
 						bb_ok);
 					llvm_ctx.builder.SetInsertPoint(bb_overflow);
+					if (!op1_addr) {
+						op1_addr = zend_jit_load_slot(llvm_ctx, OP1_OP()->var);
+					}
 #if defined(__x86_64__)
 					zend_jit_save_zval_lval(llvm_ctx,
 						op1_addr, OP1_DEF_SSA_VAR(), OP1_DEF_INFO(),
