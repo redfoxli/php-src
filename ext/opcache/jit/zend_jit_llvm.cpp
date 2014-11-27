@@ -14780,16 +14780,6 @@ static int zend_jit_init_func_execute_data(zend_llvm_ctx    &llvm_ctx,
 			execute_data,
 			offsetof(zend_execute_data, return_value),
 			PointerType::getUnqual(llvm_ctx.zval_ptr_type)), 4);
-	//JIT: EX(delayed_exception) = NULL;
-	llvm_ctx.builder.CreateAlignedStore(
-		llvm_ctx.builder.CreateIntToPtr(
-			LLVM_GET_LONG(0),
-			PointerType::getUnqual(llvm_ctx.zend_object_type)),
-		zend_jit_GEP(
-			llvm_ctx,
-			execute_data,
-			offsetof(zend_execute_data, delayed_exception),
-			PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_object_type))), 4);
 
 #if 1
 	/* Handle arguments */
