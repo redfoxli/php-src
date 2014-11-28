@@ -432,8 +432,8 @@ ZEND_FASTCALL zval* zend_jit_obj_proxy_concat(zval *var_ptr, zval *value) {
 ZEND_FASTCALL void zend_jit_helper_free_extra_args(zend_execute_data *call)
 {
 	uint32_t first_extra_arg = call->func->op_array.num_args - ((call->func->op_array.fn_flags & ZEND_ACC_VARIADIC) != 0);
-	zval *end = EX_VAR_NUM_2(call, call->func->op_array.last_var + call->func->op_array.T);
-	zval *p = end + (call->num_args - first_extra_arg);
+	zval *end = ZEND_CALL_VAR_NUM(call, call->func->op_array.last_var + call->func->op_array.T);
+	zval *p = end + (ZEND_CALL_NUM_ARGS(call) - first_extra_arg);
 
 	do {
 		p--;
