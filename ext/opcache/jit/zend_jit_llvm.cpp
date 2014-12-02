@@ -4096,8 +4096,50 @@ static int zend_jit_copy_value(zend_llvm_ctx &llvm_ctx,
 			}
 		} else {
 			if (from_info & MAY_BE_DOUBLE) {
-				zend_jit_save_zval_dval(llvm_ctx, to_addr, to_ssa_var, to_info,
-					zend_jit_load_dval(llvm_ctx, from_addr, from_ssa_var, from_info));
+				if (from_info & (MAY_BE_ANY-MAY_BE_DOUBLE)) {
+#if SIZEOF_ZEND_LONG == 8
+					llvm_ctx.builder.CreateAlignedStore(
+						llvm_ctx.builder.CreateAlignedLoad(
+							zend_jit_GEP(
+								llvm_ctx,
+								from_addr,
+								offsetof(zval,value),
+								PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))), 4),
+						zend_jit_GEP(
+							llvm_ctx,
+							to_addr,
+							offsetof(zval,value),
+							PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))), 4);
+#else
+					llvm_ctx.builder.CreateAlignedStore(
+						llvm_ctx.builder.CreateAlignedLoad(
+							zend_jit_GEP(
+								llvm_ctx,
+								from_addr,
+								offsetof(zval,value),
+								PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))), 4),
+						zend_jit_GEP(
+							llvm_ctx,
+							to_addr,
+							offsetof(zval,value),
+							PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))), 4);
+					llvm_ctx.builder.CreateAlignedStore(
+						llvm_ctx.builder.CreateAlignedLoad(
+							zend_jit_GEP(
+								llvm_ctx,
+								from_addr,
+								offsetof(zval,value) + sizeof(long),
+								PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))), 4),
+						zend_jit_GEP(
+							llvm_ctx,
+							to_addr,
+							offsetof(zval,value) + sizeof(long),
+							PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))), 4);
+#endif
+				} else {
+					zend_jit_save_zval_dval(llvm_ctx, to_addr, to_ssa_var, to_info,
+						zend_jit_load_dval(llvm_ctx, from_addr, from_ssa_var, from_info));
+				}			
 			} else if ((to_info & MAY_BE_IN_REG) || (from_info & MAY_BE_IN_REG)) {
 				if (from_info & MAY_BE_LONG) {
 					zend_jit_save_zval_lval(llvm_ctx, to_addr, to_ssa_var, to_info,
