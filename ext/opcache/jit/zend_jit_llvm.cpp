@@ -285,6 +285,7 @@ typedef struct _zend_llvm_ctx {
 	GlobalVariable  *_EG_current_execute_data;
 	GlobalVariable  *_EG_function_table;
 	GlobalVariable  *_EG_scope;
+	GlobalVariable  *_EG_symbol_table;
 	GlobalVariable  *_EG_symtable_cache_ptr;
 	GlobalVariable  *_EG_symtable_cache_limit;
 	GlobalVariable  *_EG_precision;
@@ -358,6 +359,7 @@ typedef struct _zend_llvm_ctx {
 		_EG_current_execute_data = NULL;
 		_EG_function_table = NULL;
 		_EG_scope = NULL;
+		_EG_symbol_table = NULL;
 		_EG_symtable_cache_ptr = NULL;
 		_EG_symtable_cache_limit = NULL;
 		_EG_precision = NULL;
@@ -2544,6 +2546,28 @@ static Value* zend_jit_obj_proxy_op(zend_llvm_ctx &llvm_ctx,
 	call->setCallingConv(CallingConv::X86_FastCall);
 
 	return call;
+}
+/* }}} */
+
+/* {{{ static int zend_jit_memcmp */
+static Value* zend_jit_memcmp(zend_llvm_ctx    &llvm_ctx,
+                              Value            *s1,
+                              Value            *s2,
+                              Value            *len)
+{
+	Function *_helper = zend_jit_get_helper(
+			llvm_ctx,
+			(void*)memcmp,
+			ZEND_JIT_SYM("memcmp"),
+			0,
+			Type::getInt32Ty(llvm_ctx.context),
+			PointerType::getUnqual(Type::getInt8Ty(llvm_ctx.context)),
+			PointerType::getUnqual(Type::getInt8Ty(llvm_ctx.context)),
+			LLVM_GET_LONG_TY(llvm_ctx.context),
+			NULL,
+			NULL);
+
+	return llvm_ctx.builder.CreateCall3(_helper, s1, s2, len);
 }
 /* }}} */
 
@@ -13110,9 +13134,9 @@ static int zend_jit_assign_op(zend_llvm_ctx     &llvm_ctx,
 
 /* {{{ static int zend_jit_isset_isempty_dim_obj */
 static int zend_jit_isset_isempty_dim_obj(zend_llvm_ctx     &llvm_ctx,
-										  zend_jit_context  *ctx,
-										  zend_op_array     *op_array,
-										  zend_op           *opline)
+                                          zend_jit_context  *ctx,
+                                          zend_op_array     *op_array,
+                                          zend_op           *opline)
 {
 	Value *container;
 	Value *offset;
@@ -14049,6 +14073,297 @@ static int zend_jit_isset_isempty_dim_obj(zend_llvm_ctx     &llvm_ctx,
 	if (opline->op1_type == IS_VAR && should_free) {
 		zend_jit_free_var_ptr(llvm_ctx, should_free, OP1_SSA_VAR(), OP1_INFO(), opline);
 	}
+
+	JIT_CHECK(zend_jit_check_exception(llvm_ctx, opline));
+	llvm_ctx.valid_opline = 0;
+	return 1;
+}
+/* }}} */
+
+/* {{{ static int zend_jit_bind_global */
+static int zend_jit_bind_global(zend_llvm_ctx     &llvm_ctx,
+                                zend_op_array     *op_array,
+                                zend_op           *opline)
+{
+	Value *idx;
+	zval *varname;
+	Value *variable;
+	Value *value;
+	Value *val_type;
+	Value *val_counted;
+	Value *arData;
+	Value *symbol_table;
+	Value *cache_slot_addr;
+	Value *cached_bucket;
+	Value *bucket_val;
+	Value *bucket_h;
+	Value *bucket_key;
+	Value *bucket_val_type;
+	BasicBlock *bb_valid_idx;
+	BasicBlock *bb_follow;
+	BasicBlock *bb_cached;
+	BasicBlock *bb_add_new;
+	BasicBlock *bb_next;
+	BasicBlock *bb_check_indirect;
+	BasicBlock *bb_indirect;
+	BasicBlock *bb_undef;
+	BasicBlock *bb_not_same;
+	PHI_DCL(value, 2);
+	PHI_DCL(retval, 4);
+
+	varname = OP2_OP()->zv;
+	//JIT: idx = (uint32_t)(uintptr_t)CACHED_PTR(Z_CACHE_SLOT_P(varname)) - 1;
+	cache_slot_addr = zend_jit_cache_slot_addr(
+			llvm_ctx,
+			Z_CACHE_SLOT_P(varname),
+			Type::getInt32Ty(llvm_ctx.context));
+
+	idx = llvm_ctx.builder.CreateSub(
+			llvm_ctx.builder.CreateAlignedLoad(cache_slot_addr, 4),
+			llvm_ctx.builder.getInt32(1));
+
+	symbol_table = zend_jit_load_array_ht(llvm_ctx, llvm_ctx._EG_symbol_table);
+
+	bb_valid_idx = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+	bb_follow = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+
+	//JIT: if (EXPECTED(idx < EG(symbol_table).ht.nNumUsed))
+	zend_jit_expected_br(llvm_ctx,
+			llvm_ctx.builder.CreateICmpULT(
+				idx,
+				llvm_ctx.builder.CreateAlignedLoad(
+					zend_jit_GEP(
+						llvm_ctx,
+						symbol_table,
+						offsetof(HashTable, nNumUsed),
+						PointerType::getUnqual(Type::getInt32Ty(llvm_ctx.context))), 4)),
+			bb_valid_idx,
+			bb_follow);
+
+	llvm_ctx.builder.SetInsertPoint(bb_valid_idx);
+
+	arData = llvm_ctx.builder.CreateAlignedLoad(
+			zend_jit_GEP(
+				llvm_ctx,
+				symbol_table,
+				offsetof(HashTable, arData),
+				PointerType::getUnqual(PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context)))), 4);
+
+	cached_bucket = llvm_ctx.builder.CreateIntToPtr(
+			llvm_ctx.builder.CreateAdd(
+				llvm_ctx.builder.CreatePtrToInt(
+					arData,
+					LLVM_GET_LONG_TY(llvm_ctx.context)),
+				llvm_ctx.builder.CreateZExt(
+					llvm_ctx.builder.CreateMul(
+						idx,
+						llvm_ctx.builder.getInt32(sizeof(Bucket))),
+					LLVM_GET_LONG_TY(llvm_ctx.context))),
+			PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context)));
+
+	bucket_val = zend_jit_GEP(llvm_ctx,
+				cached_bucket,
+				offsetof(Bucket, val),
+				llvm_ctx.zval_ptr_type);
+
+	bucket_val_type = zend_jit_load_type(llvm_ctx, bucket_val, -1, MAY_BE_ANY);
+
+	bb_next = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+	//JIT: if (EXPECTED(Z_TYPE(p->val) != IS_UNDEF) &&
+    //        (EXPECTED(p->key == Z_STR_P(varname)) ||
+    //         (EXPECTED(p->h == Z_STR_P(varname)->h) &&
+    //         EXPECTED(p->key != NULL) &&
+    //         EXPECTED(p->key->len == Z_STRLEN_P(varname)) &&
+    //         EXPECTED(memcmp(p->key->val, Z_STRVAL_P(varname), Z_STRLEN_P(varname)) == 0))))
+	zend_jit_expected_br(llvm_ctx,
+			llvm_ctx.builder.CreateICmpNE(
+				bucket_val_type,
+				llvm_ctx.builder.getInt8(IS_UNDEF)),
+			bb_next,
+			bb_follow);
+	llvm_ctx.builder.SetInsertPoint(bb_next);
+	bb_cached = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+	bb_next = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+	bucket_key = llvm_ctx.builder.CreateAlignedLoad(
+			zend_jit_GEP(llvm_ctx,
+				cached_bucket,
+				offsetof(Bucket, key),
+				PointerType::getUnqual(PointerType::getUnqual(llvm_ctx.zend_string_type))), 4);
+	zend_jit_expected_br(llvm_ctx,
+			llvm_ctx.builder.CreateICmpEQ(
+				bucket_key,
+				llvm_ctx.builder.CreateIntToPtr(
+					LLVM_GET_LONG((zend_uintptr_t)Z_STR_P(varname)),
+					PointerType::getUnqual(llvm_ctx.zend_string_type))),
+			bb_cached,
+			bb_next);
+	llvm_ctx.builder.SetInsertPoint(bb_next);
+	bucket_h = llvm_ctx.builder.CreateAlignedLoad(
+			zend_jit_GEP(llvm_ctx,
+				cached_bucket,
+				offsetof(Bucket, h),
+				PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))), 4);
+	bb_next = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+	zend_jit_expected_br(llvm_ctx,
+			llvm_ctx.builder.CreateICmpEQ(
+				bucket_h,
+				LLVM_GET_LONG(Z_STR_P(varname)->h)),
+			bb_next,
+			bb_follow);
+	llvm_ctx.builder.SetInsertPoint(bb_next);
+	bb_next = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+	zend_jit_expected_br(llvm_ctx,
+			llvm_ctx.builder.CreateIsNotNull(bucket_key),
+			bb_next,
+			bb_follow);
+	llvm_ctx.builder.SetInsertPoint(bb_next);
+	bb_next = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+	zend_jit_expected_br(llvm_ctx,
+			llvm_ctx.builder.CreateICmpEQ(
+				llvm_ctx.builder.CreateAlignedLoad(
+					zend_jit_GEP(llvm_ctx,
+						bucket_key,
+						offsetof(zend_string, len),
+						PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))), 4),
+				LLVM_GET_LONG(Z_STRLEN_P(varname))),
+			bb_next,
+			bb_follow);
+	llvm_ctx.builder.SetInsertPoint(bb_next);
+	zend_jit_expected_br(llvm_ctx,
+			llvm_ctx.builder.CreateICmpEQ(
+				zend_jit_memcmp(llvm_ctx,
+					zend_jit_load_str_val(llvm_ctx, bucket_key),
+					llvm_ctx.builder.CreateIntToPtr(
+						LLVM_GET_LONG((zend_uintptr_t)Z_STRVAL_P(varname)),
+						PointerType::getUnqual(Type::getInt8Ty(llvm_ctx.context))),
+					LLVM_GET_LONG(Z_STRLEN_P(varname))),
+				llvm_ctx.builder.getInt32(0)),
+			bb_cached,
+			bb_follow);
+	llvm_ctx.builder.SetInsertPoint(bb_cached);
+			
+	//JIT: value = &EG(symbol_table).ht.arData[idx].val;
+	PHI_ADD(value, bucket_val);
+	bb_check_indirect = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+	llvm_ctx.builder.CreateBr(bb_check_indirect);
+	llvm_ctx.builder.SetInsertPoint(bb_follow);
+
+	value = zend_jit_hash_find(llvm_ctx, symbol_table, 
+			llvm_ctx.builder.CreateIntToPtr(
+				LLVM_GET_LONG((zend_uintptr_t)Z_STR_P(varname)),
+				PointerType::getUnqual(llvm_ctx.zend_string_type)));
+
+	bb_next = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+	bb_add_new = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+	bb_follow = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+	zend_jit_unexpected_br(llvm_ctx,
+			llvm_ctx.builder.CreateIsNotNull(value),
+			bb_next,
+			bb_add_new);
+	llvm_ctx.builder.SetInsertPoint(bb_next);
+	arData = llvm_ctx.builder.CreateAlignedLoad(
+			zend_jit_GEP(
+				llvm_ctx,
+				symbol_table,
+				offsetof(HashTable, arData),
+				PointerType::getUnqual(PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context)))), 4);
+	idx = llvm_ctx.builder.CreateExactSDiv(
+			llvm_ctx.builder.CreateSub(
+				llvm_ctx.builder.CreatePtrToInt(value, Type::getInt32Ty(llvm_ctx.context)),
+				llvm_ctx.builder.CreatePtrToInt(arData, Type::getInt32Ty(llvm_ctx.context))),
+			llvm_ctx.builder.getInt32(sizeof(Bucket)));
+	llvm_ctx.builder.CreateAlignedStore(
+			llvm_ctx.builder.CreateAdd(idx, llvm_ctx.builder.getInt32(1)),
+				llvm_ctx.builder.CreateBitCast(
+					cache_slot_addr,
+					PointerType::getUnqual(Type::getInt32Ty(llvm_ctx.context))), 4);
+	PHI_ADD(value, value);
+	llvm_ctx.builder.CreateBr(bb_check_indirect);
+	llvm_ctx.builder.SetInsertPoint(bb_check_indirect);
+	PHI_SET(value, value, llvm_ctx.zval_ptr_type);
+	PHI_ADD(retval, value);
+	val_type = zend_jit_load_type(llvm_ctx, value, -1, MAY_BE_ANY);
+	bb_indirect = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+	zend_jit_unexpected_br(llvm_ctx,
+			llvm_ctx.builder.CreateICmpEQ(
+				val_type,
+				llvm_ctx.builder.getInt8(IS_INDIRECT)),
+			bb_indirect,
+			bb_follow);
+	llvm_ctx.builder.SetInsertPoint(bb_indirect);
+	value = zend_jit_load_ind(llvm_ctx, value);
+	PHI_ADD(retval, value);
+	val_type = zend_jit_load_type(llvm_ctx, value, -1, MAY_BE_ANY);
+	bb_undef = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+	zend_jit_unexpected_br(llvm_ctx,
+			llvm_ctx.builder.CreateICmpEQ(
+				val_type,
+				llvm_ctx.builder.getInt8(IS_UNDEF)),
+			bb_undef,
+			bb_follow);
+	llvm_ctx.builder.SetInsertPoint(bb_undef);
+	zend_jit_save_zval_type_info(llvm_ctx, value, -1, MAY_BE_ANY, llvm_ctx.builder.getInt32(IS_NULL));
+	PHI_ADD(retval, value);
+	llvm_ctx.builder.CreateBr(bb_follow);
+
+	llvm_ctx.builder.SetInsertPoint(bb_add_new);
+	value = zend_jit_hash_update(llvm_ctx,
+			symbol_table,
+			llvm_ctx.builder.CreateIntToPtr(
+				LLVM_GET_LONG((zend_uintptr_t)Z_STR_P(varname)),
+				PointerType::getUnqual(llvm_ctx.zend_string_type)),
+			llvm_ctx._EG_uninitialized_zval,
+			opline);
+	arData = llvm_ctx.builder.CreateAlignedLoad(
+			zend_jit_GEP(
+				llvm_ctx,
+				symbol_table,
+				offsetof(HashTable, arData),
+				PointerType::getUnqual(PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context)))), 4);
+	idx = llvm_ctx.builder.CreateExactSDiv(
+			llvm_ctx.builder.CreateSub(
+				llvm_ctx.builder.CreatePtrToInt(value, Type::getInt32Ty(llvm_ctx.context)),
+				llvm_ctx.builder.CreatePtrToInt(arData,Type::getInt32Ty(llvm_ctx.context))),
+			llvm_ctx.builder.getInt32(sizeof(Bucket)));
+	llvm_ctx.builder.CreateAlignedStore(
+			llvm_ctx.builder.CreateAdd(idx, llvm_ctx.builder.getInt32(1)),
+				llvm_ctx.builder.CreateBitCast(
+					cache_slot_addr,
+					PointerType::getUnqual(Type::getInt32Ty(llvm_ctx.context))), 4);
+	PHI_ADD(retval, value);
+	llvm_ctx.builder.CreateBr(bb_follow);
+	llvm_ctx.builder.SetInsertPoint(bb_follow);
+	PHI_SET(retval, value, llvm_ctx.zval_ptr_type);
+
+	variable = zend_jit_load_cv(llvm_ctx, OP1_OP()->var, OP1_INFO(), OP1_SSA_VAR(), 0, opline, BP_VAR_W);
+	//JIT: zend_assign_to_variable_reference?
+	bb_follow = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+	bb_not_same = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+	bb_next = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+	zend_jit_expected_br(llvm_ctx,
+			llvm_ctx.builder.CreateICmpNE(
+				variable,
+				value),
+			bb_not_same,
+			bb_next);
+	llvm_ctx.builder.SetInsertPoint(bb_not_same);
+
+	zend_jit_make_ref(llvm_ctx, value, NULL, -1, MAY_BE_ANY|MAY_BE_REF);
+	val_counted = zend_jit_load_counted(llvm_ctx, value, -1, MAY_BE_ANY);
+	zend_jit_addref(llvm_ctx, val_counted);
+	zend_jit_zval_ptr_dtor_ex(llvm_ctx, variable, NULL, OP1_SSA_VAR(), OP1_INFO(), opline->lineno, 1);
+	zend_jit_save_zval_ptr(llvm_ctx,
+			variable,
+			OP1_SSA_VAR(),
+			OP1_INFO(),
+			val_counted);
+	zend_jit_save_zval_type_info(llvm_ctx,
+			variable, OP1_SSA_VAR(), OP1_INFO() ,llvm_ctx.builder.getInt32(IS_REFERENCE_EX));
+	llvm_ctx.builder.CreateBr(bb_follow);
+	llvm_ctx.builder.SetInsertPoint(bb_next);
+	zend_jit_make_ref(llvm_ctx, variable, NULL, OP1_SSA_VAR(), OP1_INFO());
+	llvm_ctx.builder.CreateBr(bb_follow);
+	llvm_ctx.builder.SetInsertPoint(bb_follow);
 
 	JIT_CHECK(zend_jit_check_exception(llvm_ctx, opline));
 	llvm_ctx.valid_opline = 0;
@@ -17022,28 +17337,6 @@ static int zend_jit_free(zend_llvm_ctx    &llvm_ctx,
 }
 /* }}} */
 
-/* {{{ static int zend_jit_memcmp */
-static Value* zend_jit_memcmp(zend_llvm_ctx    &llvm_ctx,
-                              Value            *s1,
-                              Value            *s2,
-                              Value            *len)
-{
-	Function *_helper = zend_jit_get_helper(
-			llvm_ctx,
-			(void*)memcmp,
-			ZEND_JIT_SYM("memcmp"),
-			0,
-			Type::getInt32Ty(llvm_ctx.context),
-			PointerType::getUnqual(Type::getInt8Ty(llvm_ctx.context)),
-			PointerType::getUnqual(Type::getInt8Ty(llvm_ctx.context)),
-			LLVM_GET_LONG_TY(llvm_ctx.context),
-			NULL,
-			NULL);
-
-	return llvm_ctx.builder.CreateCall3(_helper, s1, s2, len);
-}
-/* }}} */
-
 /* {{{ static Value* zend_jit_rsrc_list_get_rsrc_type */
 static Value* zend_jit_rsrc_list_get_rsrc_type(zend_llvm_ctx    &llvm_ctx,
                                                Value            *res)
@@ -17847,6 +18140,11 @@ static int zend_jit_codegen_ex(zend_jit_context *ctx,
 					}
 					if (!zend_jit_cond_jmp(llvm_ctx, opline, op_array->opcodes + opline->extended_value, TARGET_BB(opline->extended_value), TARGET_BB(block[b + 1].start))) return 0;
 					break;
+#if 0
+				case ZEND_BIND_GLOBAL:
+					if (!zend_jit_bind_global(llvm_ctx, op_array, opline)) return 0;
+					break;
+#endif
 				case ZEND_STRLEN:
 					if (!zend_jit_strlen(llvm_ctx, op_array, opline)) return 0;
 					break;
@@ -18161,6 +18459,16 @@ static int zend_jit_codegen_start_module(zend_jit_context *ctx, zend_op_array *o
 			0,
 			ZEND_JIT_SYM("EG_scope"));
 	llvm_ctx.engine->addGlobalMapping(llvm_ctx._EG_scope, (void*)&EG(scope));
+
+	// Create LLVM reference to EG(symbol_table))
+	llvm_ctx._EG_symbol_table = new GlobalVariable(
+			*llvm_ctx.module,
+			PointerType::getUnqual(llvm_ctx.zend_array_type),
+			false,
+			GlobalVariable::ExternalLinkage,
+			0,
+			ZEND_JIT_SYM("EG_symbol_table"));
+	llvm_ctx.engine->addGlobalMapping(llvm_ctx._EG_symbol_table, (void*)&EG(symbol_table));
 
 	// Create LLVM reference to EG(symtable_cache_ptr)
 	llvm_ctx._EG_symtable_cache_ptr = new GlobalVariable(
