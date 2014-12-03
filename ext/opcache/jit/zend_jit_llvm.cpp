@@ -18140,11 +18140,9 @@ static int zend_jit_codegen_ex(zend_jit_context *ctx,
 					}
 					if (!zend_jit_cond_jmp(llvm_ctx, opline, op_array->opcodes + opline->extended_value, TARGET_BB(opline->extended_value), TARGET_BB(block[b + 1].start))) return 0;
 					break;
-#if 0
 				case ZEND_BIND_GLOBAL:
 					if (!zend_jit_bind_global(llvm_ctx, op_array, opline)) return 0;
 					break;
-#endif
 				case ZEND_STRLEN:
 					if (!zend_jit_strlen(llvm_ctx, op_array, opline)) return 0;
 					break;
