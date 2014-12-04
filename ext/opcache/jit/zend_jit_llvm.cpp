@@ -14355,16 +14355,18 @@ static int zend_jit_bind_global(zend_llvm_ctx     &llvm_ctx,
 
 	variable = zend_jit_load_cv(llvm_ctx, OP1_OP()->var, OP1_INFO(), OP1_SSA_VAR(), 0, opline, BP_VAR_W);
 	//JIT: zend_assign_to_variable_reference?
-	bb_follow = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
-	bb_not_same = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
-	bb_next = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
-	zend_jit_expected_br(llvm_ctx,
+	if (OP1_MAY_BE(MAY_BE_REF)) {
+		bb_follow = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+		bb_not_same = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+		bb_next = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+		zend_jit_expected_br(llvm_ctx,
 			llvm_ctx.builder.CreateICmpNE(
 				variable,
 				value),
 			bb_not_same,
 			bb_next);
-	llvm_ctx.builder.SetInsertPoint(bb_not_same);
+		llvm_ctx.builder.SetInsertPoint(bb_not_same);
+	}
 
 	zend_jit_make_ref(llvm_ctx, value, NULL, -1, MAY_BE_ANY|MAY_BE_REF);
 	val_counted = zend_jit_load_counted(llvm_ctx, value, -1, MAY_BE_ANY);
@@ -14377,13 +14379,17 @@ static int zend_jit_bind_global(zend_llvm_ctx     &llvm_ctx,
 			val_counted);
 	zend_jit_save_zval_type_info(llvm_ctx,
 			variable, OP1_SSA_VAR(), OP1_INFO() ,llvm_ctx.builder.getInt32(IS_REFERENCE_EX));
-	llvm_ctx.builder.CreateBr(bb_follow);
-	llvm_ctx.builder.SetInsertPoint(bb_next);
-	zend_jit_make_ref(llvm_ctx, variable, NULL, OP1_SSA_VAR(), OP1_INFO());
-	llvm_ctx.builder.CreateBr(bb_follow);
-	llvm_ctx.builder.SetInsertPoint(bb_follow);
+	if (OP1_MAY_BE(MAY_BE_REF)) {
+		llvm_ctx.builder.CreateBr(bb_follow);
+		llvm_ctx.builder.SetInsertPoint(bb_next);
+		zend_jit_make_ref(llvm_ctx, variable, NULL, OP1_SSA_VAR(), OP1_INFO());
+		llvm_ctx.builder.CreateBr(bb_follow);
+		llvm_ctx.builder.SetInsertPoint(bb_follow);
+	}
 
-	JIT_CHECK(zend_jit_check_exception(llvm_ctx, opline));
+	if (OP1_MAY_BE(MAY_BE_DEF)) {
+		JIT_CHECK(zend_jit_check_exception(llvm_ctx, opline));
+	}
 	llvm_ctx.valid_opline = 0;
 	return 1;
 }
