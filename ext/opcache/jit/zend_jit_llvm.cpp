@@ -13570,13 +13570,14 @@ static int zend_jit_isset_isempty_dim_obj(zend_llvm_ctx     &llvm_ctx,
 				llvm_ctx.builder.CreateBr(bb_next);
 
 				llvm_ctx.builder.SetInsertPoint(bb_next);
+				PHI_SET(real_val, val, llvm_ctx.zval_ptr_type);
 				if (opline->extended_value & ZEND_ISSET) {
 					Value *val_ref;
 					BasicBlock *bb_null = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 					BasicBlock *bb_ref = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 					BasicBlock *bb_ref_null = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 					BasicBlock *bb_next = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
-					PHI_SET(real_val, val, llvm_ctx.zval_ptr_type);
+
 					PHI_SET(val_type, val_type, Type::getInt8Ty(llvm_ctx.context));
 
 					/* JIT: result = value != NULL && Z_TYPE_P(value) > IS_NULL &&
