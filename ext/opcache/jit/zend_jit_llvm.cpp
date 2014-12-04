@@ -6914,7 +6914,7 @@ static int zend_jit_concat_function(zend_llvm_ctx      &llvm_ctx,
 		}
 
 		if (op2_info & MAY_BE_IN_REG) {
-			op2_addr = zend_jit_reload_from_reg(llvm_ctx, op2_ssa_var, op1_info);
+			op2_addr = zend_jit_reload_from_reg(llvm_ctx, op2_ssa_var, op2_info);
 		}
 
 		if (op1_addr == op2_addr) {
@@ -7003,7 +7003,7 @@ static int zend_jit_concat_function(zend_llvm_ctx      &llvm_ctx,
 		}
 
 		if (op2_info & MAY_BE_IN_REG) {
-			op2_addr = zend_jit_reload_from_reg(llvm_ctx, op2_ssa_var, op1_info);
+			op2_addr = zend_jit_reload_from_reg(llvm_ctx, op2_ssa_var, op2_info);
 		}
 
 		if (result_info & MAY_BE_IN_REG) {
