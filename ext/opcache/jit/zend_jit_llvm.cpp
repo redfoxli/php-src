@@ -12570,7 +12570,7 @@ static int zend_jit_assign_dim(zend_llvm_ctx     &llvm_ctx,
 			}
 
 			if (!zend_jit_free_operand(llvm_ctx,
-						OP1_DATA_OP_TYPE(), value, NULL, OP1_DATA_SSA_VAR(), OP1_DATA_INFO(), opline->lineno)) {
+						OP1_DATA_OP_TYPE(), op_data, NULL, OP1_DATA_SSA_VAR(), OP1_DATA_INFO(), opline->lineno)) {
 				return 0;
 			}
 
@@ -12626,7 +12626,7 @@ static int zend_jit_assign_dim(zend_llvm_ctx     &llvm_ctx,
 					OP1_DATA_DEF_INFO());
 			} else if (OP1_DATA_OP_TYPE() == IS_VAR) {
 				if (!zend_jit_free_operand(llvm_ctx,
-							OP1_DATA_OP_TYPE(), value, NULL, OP1_DATA_SSA_VAR(), OP1_DATA_INFO(), opline->lineno)) {
+							OP1_DATA_OP_TYPE(), op_data, NULL, OP1_DATA_SSA_VAR(), OP1_DATA_INFO(), opline->lineno)) {
 					return 0;
 				}
 			}
