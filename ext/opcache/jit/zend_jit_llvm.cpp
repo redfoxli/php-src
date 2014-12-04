@@ -5766,7 +5766,7 @@ static Value* zend_jit_str_offset_index(zend_llvm_ctx &llvm_ctx,
 					bb_rcn,
 					bb_rc1);
 			llvm_ctx.builder.SetInsertPoint(bb_rcn);
-			zend_jit_delref(llvm_ctx, container);
+			zend_jit_delref(llvm_ctx, zend_jit_load_counted(llvm_ctx, container, container_ssa, container_info));
 			//???update reg value?
 			zend_jit_copy_ctor_func(llvm_ctx, container, opline->lineno);
 			llvm_ctx.builder.CreateBr(bb_rc1);
