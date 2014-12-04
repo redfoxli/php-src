@@ -12442,9 +12442,11 @@ static int zend_jit_assign_dim(zend_llvm_ctx     &llvm_ctx,
 
 	if (OP1_MAY_BE(MAY_BE_ANY - MAY_BE_OBJECT)) {
 		Value *ret;
+		Value *op_data;
 		Value *value;
 		Value *offset;
 		Value *new_element;
+		Value *should_free = NULL;
 		BasicBlock *bb_string_offset = NULL;
 		BasicBlock *bb_new_element = NULL;
 		BasicBlock *bb_uninitialized = NULL;
@@ -12458,8 +12460,10 @@ static int zend_jit_assign_dim(zend_llvm_ctx     &llvm_ctx,
 			dim = op2_addr;
 		}
 
-		value = zend_jit_load_operand(llvm_ctx,
-				OP1_DATA_OP_TYPE(), OP1_DATA_OP(), OP1_DATA_SSA_VAR(), OP1_DATA_INFO(), 0, opline);
+		op_data = zend_jit_load_operand_addr(llvm_ctx,
+				OP1_DATA_OP_TYPE(), OP1_DATA_OP(), OP1_DATA_SSA_VAR(), OP1_DATA_INFO(),
+			   	0, opline, 0, BP_VAR_R, &should_free);
+		value = zend_jit_deref(llvm_ctx, op_data, OP1_DATA_SSA_VAR(), OP1_DATA_INFO());
 
 		ret = zend_jit_fetch_dimension_address(
 				llvm_ctx,
@@ -12526,14 +12530,14 @@ static int zend_jit_assign_dim(zend_llvm_ctx     &llvm_ctx,
 				zend_jit_update_reg_value(
 					llvm_ctx,
 					(opline+1)->op1.var,
-					value,
+					op_data,
 					OP1_DATA_SSA_VAR(),
 					OP1_DATA_INFO(),
 					OP1_DATA_DEF_SSA_VAR(),
 					OP1_DATA_DEF_INFO());
-			} else if (OP1_DATA_OP_TYPE() == IS_VAR) {
+			} else if (OP1_DATA_OP_TYPE() == IS_VAR && should_free) {
 				if (!zend_jit_free_operand(llvm_ctx,
-							OP1_DATA_OP_TYPE(), value, NULL, OP1_DATA_SSA_VAR(), OP1_DATA_INFO(), opline->lineno, 1)) {
+							OP1_DATA_OP_TYPE(), op_data, NULL, OP1_DATA_SSA_VAR(), OP1_DATA_INFO(), opline->lineno, 1)) {
 					return 0;
 				}
 			}
