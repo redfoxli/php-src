@@ -2192,7 +2192,7 @@ ZEND_API int zend_register_functions(zend_class_entry *scope, const zend_functio
 		if (ptr->arg_info) {
 			zend_internal_function_info *info = (zend_internal_function_info*)ptr->arg_info;
 			
-			internal_function->arg_info = (zend_arg_info*)ptr->arg_info+1;
+			internal_function->arg_info = (zend_internal_arg_info*)ptr->arg_info+1;
 			internal_function->num_args = ptr->num_args;
 			/* Currently you cannot denote that the function can accept less arguments than num_args */
 			if (info->required_num_args == -1) {
@@ -3504,7 +3504,7 @@ ZEND_API int zend_fcall_info_argp(zend_fcall_info *fci TSRMLS_DC, int argc, zval
 		fci->params = (zval *) erealloc(fci->params, fci->param_count * sizeof(zval));
 
 		for (i = 0; i < argc; ++i) {
-			ZVAL_COPY_VALUE(&fci->params[i], &argv[i]);
+			ZVAL_COPY(&fci->params[i], &argv[i]);
 		}
 	}
 
@@ -3529,7 +3529,7 @@ ZEND_API int zend_fcall_info_argv(zend_fcall_info *fci TSRMLS_DC, int argc, va_l
 
 		for (i = 0; i < argc; ++i) {
 			arg = va_arg(*argv, zval *);
-			ZVAL_COPY_VALUE(&fci->params[i], arg);
+			ZVAL_COPY(&fci->params[i], arg);
 		}
 	}
 
