@@ -15807,6 +15807,31 @@ static int zend_jit_set_retref_flag(zend_llvm_ctx    &llvm_ctx,
 }
 /* }}} */
 
+/* {{{ static int zend_jit_check_internal_type_hint */
+static int zend_jit_check_internal_type_hint(zend_llvm_ctx    &llvm_ctx,
+                                             Value            *func,
+                                             Value            *arg_num,
+                                             Value            *arg)
+{
+	Function *_helper = zend_jit_get_helper(
+			llvm_ctx,
+			(void*)zend_jit_helper_check_internal_type_hint,
+			ZEND_JIT_SYM("zend_jit_helper_check_internal_type_hint"),
+			ZEND_JIT_HELPER_FAST_CALL,
+			Type::getVoidTy(llvm_ctx.context),
+			PointerType::getUnqual(llvm_ctx.zend_function_type),
+			Type::getInt32Ty(llvm_ctx.context),
+			llvm_ctx.zval_ptr_type,
+			NULL,
+			NULL);
+
+	CallInst *call = llvm_ctx.builder.CreateCall3(_helper,
+		func, arg_num, arg);
+	call->setCallingConv(CallingConv::X86_FastCall);
+	return 1;
+}
+/* }}} */
+
 /* {{{ static int zend_jit_check_type_hint */
 static int zend_jit_check_type_hint(zend_llvm_ctx    &llvm_ctx,
                                     Value            *func,
@@ -15929,7 +15954,7 @@ static int zend_jit_check_type_hints(zend_llvm_ctx    &llvm_ctx,
 				}
 				if (cur_arg_info->class_name || cur_arg_info->type_hint) {
 					ret = 2;
-					zend_jit_check_type_hint(
+					zend_jit_check_internal_type_hint(
 						llvm_ctx,
 						func_addr,
 						llvm_ctx.builder.getInt32(i + 1),
