@@ -6909,14 +6909,30 @@ static int zend_jit_concat_function(zend_llvm_ctx      &llvm_ctx,
 
 	if (bb_op1_string) {
 		llvm_ctx.builder.SetInsertPoint(bb_op1_string);
+		if (op1_info & MAY_BE_IN_REG) {
+			op1_addr = zend_jit_reload_from_reg(llvm_ctx, op1_ssa_var, op1_info);
+		}
 
-		if (op1_addr != op2_addr) {
-			if (op1_addr && op2_addr) {
-				BasicBlock *bb_same_op = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
-				BasicBlock *bb_cont = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
-				op2_type = NULL;
+		if (op2_info & MAY_BE_IN_REG) {
+			op2_addr = zend_jit_reload_from_reg(llvm_ctx, op2_ssa_var, op1_info);
+		}
 
-				zend_jit_unexpected_br(
+		if (op1_addr == op2_addr) {
+			PHI_ADD(op1_copy, llvm_ctx.builder.getInt8(0));
+			PHI_ADD(op2_copy, llvm_ctx.builder.getInt8(0));
+			PHI_ADD(op1_str, op1_str);
+			PHI_ADD(op2_str, op1_str);
+
+			if (!bb_do_concat) {
+				bb_do_concat = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+			}
+			llvm_ctx.builder.CreateBr(bb_do_concat);
+		} else {
+			BasicBlock *bb_same_op = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+			BasicBlock *bb_cont = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+			op2_type = NULL;
+
+			zend_jit_unexpected_br(
 					llvm_ctx,
 					llvm_ctx.builder.CreateICmpEQ(
 						op2_addr,
@@ -6924,19 +6940,18 @@ static int zend_jit_concat_function(zend_llvm_ctx      &llvm_ctx,
 					bb_same_op,
 					bb_cont);
 
-				llvm_ctx.builder.SetInsertPoint(bb_same_op);
+			llvm_ctx.builder.SetInsertPoint(bb_same_op);
 
-				PHI_ADD(op1_copy, llvm_ctx.builder.getInt8(0));
-				PHI_ADD(op2_copy, llvm_ctx.builder.getInt8(0));
-				PHI_ADD(op1_str, op1_str);
-				PHI_ADD(op2_str, op1_str);
-				if (!bb_do_concat) {
-					bb_do_concat = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
-				}
-				llvm_ctx.builder.CreateBr(bb_do_concat);
-
-				llvm_ctx.builder.SetInsertPoint(bb_cont);
+			PHI_ADD(op1_copy, llvm_ctx.builder.getInt8(0));
+			PHI_ADD(op2_copy, llvm_ctx.builder.getInt8(0));
+			PHI_ADD(op1_str, op1_str);
+			PHI_ADD(op2_str, op1_str);
+			if (!bb_do_concat) {
+				bb_do_concat = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 			}
+			llvm_ctx.builder.CreateBr(bb_do_concat);
+
+			llvm_ctx.builder.SetInsertPoint(bb_cont);
 
 			zend_jit_make_printable_zval(
 					llvm_ctx,
@@ -6975,16 +6990,6 @@ static int zend_jit_concat_function(zend_llvm_ctx      &llvm_ctx,
 				}
 				llvm_ctx.builder.CreateBr(bb_do_concat);
 			}
-		} else {
-			PHI_ADD(op1_copy, llvm_ctx.builder.getInt8(0));
-			PHI_ADD(op2_copy, llvm_ctx.builder.getInt8(0));
-			PHI_ADD(op1_str, op1_str);
-			PHI_ADD(op2_str, op1_str);
-
-			if (!bb_do_concat) {
-				bb_do_concat = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
-			}
-			llvm_ctx.builder.CreateBr(bb_do_concat);
 		}
 	}
 
@@ -6993,47 +6998,21 @@ static int zend_jit_concat_function(zend_llvm_ctx      &llvm_ctx,
 			
 		llvm_ctx.builder.SetInsertPoint(bb_op1_copy);
 
-		if (op1_addr != result_addr && op1_addr) {
-			BasicBlock *bb_same_op = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
-			bb_cont = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+		if (op1_info & MAY_BE_IN_REG) {
+			op1_addr = zend_jit_reload_from_reg(llvm_ctx, op1_ssa_var, op1_info);
+		}
 
-			zend_jit_unexpected_br(
-					llvm_ctx,
-					llvm_ctx.builder.CreateICmpEQ(
-						result_addr,
-						op1_addr),
-					bb_same_op,
-					bb_cont);
+		if (op2_info & MAY_BE_IN_REG) {
+			op2_addr = zend_jit_reload_from_reg(llvm_ctx, op2_ssa_var, op1_info);
+		}
 
-			llvm_ctx.builder.SetInsertPoint(bb_same_op);
+		if (result_info & MAY_BE_IN_REG) {
+			result_addr = zend_jit_reload_from_reg(llvm_ctx, result_ssa_var, result_info);
+		}
+
+		if (op1_addr == result_addr) {
 			zend_jit_zval_dtor_ex(llvm_ctx, op1_addr, op1_type, op1_ssa_var, op1_info, opline->lineno);
-
-			if (op1_addr != op2_addr && op2_addr) {
-				bb_same_op = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
-
-				zend_jit_unexpected_br(
-						llvm_ctx,
-						llvm_ctx.builder.CreateICmpEQ(
-							result_addr,
-							op2_addr),
-						bb_same_op,
-						bb_cont);
-				llvm_ctx.builder.SetInsertPoint(bb_same_op);
-			}
-
-			PHI_ADD(op1_copy, llvm_ctx.builder.getInt8(1));
-			PHI_ADD(op2_copy, llvm_ctx.builder.getInt8(0));
-			PHI_ADD(op1_str, op1_copy_str);
-			PHI_ADD(op2_str, op1_copy_str);
-			if (!bb_do_concat) {
-				bb_do_concat = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
-			}
-			llvm_ctx.builder.CreateBr(bb_do_concat);
-		} else {
-			if (op1_addr) {
-				zend_jit_zval_dtor_ex(llvm_ctx, op1_addr, op1_type, op1_ssa_var, op1_info, opline->lineno);
-			}
-			if (op1_addr != op2_addr && op1_addr && op2_addr) {
+			if (op1_addr != op2_addr) {
 				BasicBlock *bb_same_op = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 				bb_cont = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 
@@ -7056,7 +7035,43 @@ static int zend_jit_concat_function(zend_llvm_ctx      &llvm_ctx,
 				bb_do_concat = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 			}
 			llvm_ctx.builder.CreateBr(bb_do_concat);
-		}
+		} else {
+			BasicBlock *bb_same_op = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+			bb_cont = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+
+			zend_jit_unexpected_br(
+					llvm_ctx,
+					llvm_ctx.builder.CreateICmpEQ(
+						result_addr,
+						op1_addr),
+					bb_same_op,
+					bb_cont);
+
+			llvm_ctx.builder.SetInsertPoint(bb_same_op);
+			zend_jit_zval_dtor_ex(llvm_ctx, op1_addr, op1_type, op1_ssa_var, op1_info, opline->lineno);
+
+			if (op1_addr != op2_addr) {
+				bb_same_op = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+
+				zend_jit_unexpected_br(
+						llvm_ctx,
+						llvm_ctx.builder.CreateICmpEQ(
+							result_addr,
+							op2_addr),
+						bb_same_op,
+						bb_cont);
+				llvm_ctx.builder.SetInsertPoint(bb_same_op);
+			}
+
+			PHI_ADD(op1_copy, llvm_ctx.builder.getInt8(1));
+			PHI_ADD(op2_copy, llvm_ctx.builder.getInt8(0));
+			PHI_ADD(op1_str, op1_copy_str);
+			PHI_ADD(op2_str, op1_copy_str);
+			if (!bb_do_concat) {
+				bb_do_concat = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
+			}
+			llvm_ctx.builder.CreateBr(bb_do_concat);
+		} 
 
 		if (bb_cont) {
 			llvm_ctx.builder.SetInsertPoint(bb_cont);
