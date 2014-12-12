@@ -190,10 +190,10 @@ static int zend_jit_op_array_analyze_calls(zend_jit_context *ctx, zend_op_array 
 	    	call_info = NULL;
 	    	switch (opline->opcode) {
 	    		case ZEND_INIT_FCALL:
-					if ((func = zend_hash_find_ptr(&ctx->main_persistent_script->function_table, Z_STR_P(opline->op2.zv))) != NULL) {
+					if ((func = zend_hash_find_ptr(&ctx->main_persistent_script->function_table, Z_STR_P(RT_CONSTANT(op_array, opline->op2)))) != NULL) {
 				    	zend_jit_func_info *func_info = JIT_DATA(&func->op_array);
 						if (func_info) {
-						    call_info = zend_jit_context_calloc(ctx, sizeof(zend_jit_call_info) + (sizeof(zend_jit_arg_info) * (opline->extended_value - 1)), 1);
+						    call_info = zend_jit_context_calloc(ctx, sizeof(zend_jit_call_info) + (sizeof(zend_jit_arg_info) * ((int)opline->extended_value - 1)), 1);
 							call_info->caller_op_array = op_array;
 							call_info->caller_init_opline = opline;
 							call_info->caller_call_opline = NULL;
@@ -204,9 +204,9 @@ static int zend_jit_op_array_analyze_calls(zend_jit_context *ctx, zend_op_array 
 							call_info->next_callee = info->callee_info;
 							info->callee_info = call_info;
 						}
-					} else if ((func = zend_hash_find_ptr(EG(function_table), Z_STR_P(opline->op2.zv))) != NULL &&
+					} else if ((func = zend_hash_find_ptr(EG(function_table), Z_STR_P(RT_CONSTANT(op_array, opline->op2)))) != NULL &&
 					           func->type == ZEND_INTERNAL_FUNCTION) {
-						call_info = zend_jit_context_calloc(ctx, sizeof(zend_jit_call_info) + (sizeof(zend_jit_arg_info) * (opline->extended_value - 1)), 1);
+						call_info = zend_jit_context_calloc(ctx, sizeof(zend_jit_call_info) + (sizeof(zend_jit_arg_info) * ((int)opline->extended_value - 1)), 1);
 						call_info->caller_op_array = op_array;
 						call_info->caller_init_opline = opline;
 						call_info->caller_call_opline = NULL;

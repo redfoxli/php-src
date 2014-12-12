@@ -693,14 +693,14 @@ void zend_jit_dump_ssa_line(zend_op_array *op_array, uint32_t line)
 		}
 	} else if (OP1_ADDR & op_desc[opline->opcode].flags) {
 		if (block_map) {
-			fprintf(stderr, " BB%d", block_map[opline->op1.jmp_addr - op_array->opcodes]);
+			fprintf(stderr, " BB%d", block_map[OP_JMP_ADDR(opline, opline->op1) - op_array->opcodes]);
 		} else {
-			fprintf(stderr, " .OP_%u", (uint32_t)(opline->op1.jmp_addr - op_array->opcodes));
+			fprintf(stderr, " .OP_%u", (uint32_t)(OP_JMP_ADDR(opline, opline->op1) - op_array->opcodes));
 		}
 	} else if (OP1_NUM & op_desc[opline->opcode].flags) {
 		fprintf(stderr, " %d", opline->op1.num);
 	} else if (opline->op1_type == IS_CONST) {
-		zend_jit_dump_const(opline->op1.zv);
+		zend_jit_dump_const(RT_CONSTANT(op_array, opline->op1));
 	} else if (opline->op1_type == IS_CV || opline->op1_type == IS_VAR || opline->op1_type == IS_TMP_VAR) {
 	    fprintf(stderr, " ");
 	    if (ssa) {
@@ -721,14 +721,14 @@ void zend_jit_dump_ssa_line(zend_op_array *op_array, uint32_t line)
 		}
 	} else if (OP2_ADDR & op_desc[opline->opcode].flags) {
 		if (block_map) {
-			fprintf(stderr, " BB%d", block_map[opline->op2.jmp_addr - op_array->opcodes]);
+			fprintf(stderr, " BB%d", block_map[OP_JMP_ADDR(opline, opline->op2) - op_array->opcodes]);
 		} else {
-			fprintf(stderr, " .OP_%u", (uint32_t)(opline->op2.jmp_addr - op_array->opcodes));
+			fprintf(stderr, " .OP_%u", (uint32_t)(OP_JMP_ADDR(opline, opline->op2) - op_array->opcodes));
 		}
 	} else if (OP2_NUM & op_desc[opline->opcode].flags) {
 		fprintf(stderr, " %d", opline->op2.num);
 	} else if (opline->op2_type == IS_CONST) {
-		zend_jit_dump_const(opline->op2.zv);
+		zend_jit_dump_const(RT_CONSTANT(op_array, opline->op2));
 	} else if (opline->op2_type == IS_CV ||  opline->op2_type == IS_VAR || opline->op2_type == IS_TMP_VAR) {
 	    fprintf(stderr, " ");
 	    if (ssa) {
@@ -749,9 +749,9 @@ void zend_jit_dump_ssa_line(zend_op_array *op_array, uint32_t line)
 		}
 	} else if (EXT_REL_LINE & op_desc[opline->opcode].flags) {
 		if (block_map) {
-			fprintf(stderr, " BB%d", block_map[(zend_op*)(((char*)opline) + opline->extended_value) - op_array->opcodes]);
+			fprintf(stderr, " BB%d", block_map[(zend_op*)(((char*)opline) + (int)opline->extended_value) - op_array->opcodes]);
 		} else {
-			fprintf(stderr, " .OP_" ZEND_LONG_FMT, (zend_op*)(((char*)opline) + opline->extended_value) - op_array->opcodes);
+			fprintf(stderr, " .OP_" ZEND_LONG_FMT, (zend_op*)(((char*)opline) + (int)opline->extended_value) - op_array->opcodes);
 		}
 	}
 	fprintf(stderr, "\n");
@@ -1039,10 +1039,10 @@ int zend_jit_build_cfg(zend_jit_context *ctx, zend_op_array *op_array)
 			case ZEND_BRK:
 			case ZEND_CONT:
 				if (opline->op2_type == IS_CONST &&
-				    Z_TYPE_P(opline->op2.zv) == IS_LONG &&
+				    Z_TYPE_P(RT_CONSTANT(op_array, opline->op2)) == IS_LONG &&
 				    (int)opline->op1.num >= 0) {
 					int array_offset = opline->op1.num;
-					int nest_levels = Z_LVAL_P(opline->op2.zv);
+					int nest_levels = Z_LVAL_P(RT_CONSTANT(op_array, opline->op2));
 					zend_brk_cont_element *jmp_to;
 
 					do {
@@ -1082,31 +1082,31 @@ int zend_jit_build_cfg(zend_jit_context *ctx, zend_op_array *op_array)
 				info->flags |= ZEND_JIT_FUNC_HAS_CALLS;
 				break;
 			case ZEND_INIT_FCALL:
-				if ((fn = zend_hash_find_ptr(EG(function_table), Z_STR_P(opline->op2.zv))) != NULL) {
+				if ((fn = zend_hash_find_ptr(EG(function_table), Z_STR_P(RT_CONSTANT(op_array, opline->op2)))) != NULL) {
 					if (fn->type == ZEND_INTERNAL_FUNCTION) {
-						if (Z_STRLEN_P(opline->op2.zv) == sizeof("extract")-1 &&
-						    memcmp(Z_STRVAL_P(opline->op2.zv), "extract", sizeof("extract")-1) == 0) {
+						if (Z_STRLEN_P(RT_CONSTANT(op_array, opline->op2)) == sizeof("extract")-1 &&
+						    memcmp(Z_STRVAL_P(RT_CONSTANT(op_array, opline->op2)), "extract", sizeof("extract")-1) == 0) {
 							info->flags |= ZEND_JIT_FUNC_TOO_DYNAMIC;
-						} else if (Z_STRLEN_P(opline->op2.zv) == sizeof("compact")-1 &&
-						    memcmp(Z_STRVAL_P(opline->op2.zv), "compact", sizeof("compact")-1) == 0) {
+						} else if (Z_STRLEN_P(RT_CONSTANT(op_array, opline->op2)) == sizeof("compact")-1 &&
+						    memcmp(Z_STRVAL_P(RT_CONSTANT(op_array, opline->op2)), "compact", sizeof("compact")-1) == 0) {
 							info->flags |= ZEND_JIT_FUNC_TOO_DYNAMIC;
-						} else if (Z_STRLEN_P(opline->op2.zv) == sizeof("parse_str")-1 &&
-						    memcmp(Z_STRVAL_P(opline->op2.zv), "parse_str", sizeof("parse_str")-1) == 0) {
+						} else if (Z_STRLEN_P(RT_CONSTANT(op_array, opline->op2)) == sizeof("parse_str")-1 &&
+						    memcmp(Z_STRVAL_P(RT_CONSTANT(op_array, opline->op2)), "parse_str", sizeof("parse_str")-1) == 0) {
 							info->flags |= ZEND_JIT_FUNC_TOO_DYNAMIC;
-						} else if (Z_STRLEN_P(opline->op2.zv) == sizeof("mb_parse_str")-1 &&
-						    memcmp(Z_STRVAL_P(opline->op2.zv), "mb_parse_str", sizeof("mb_parse_str")-1) == 0) {
+						} else if (Z_STRLEN_P(RT_CONSTANT(op_array, opline->op2)) == sizeof("mb_parse_str")-1 &&
+						    memcmp(Z_STRVAL_P(RT_CONSTANT(op_array, opline->op2)), "mb_parse_str", sizeof("mb_parse_str")-1) == 0) {
 							info->flags |= ZEND_JIT_FUNC_TOO_DYNAMIC;
-						} else if (Z_STRLEN_P(opline->op2.zv) == sizeof("get_defined_vars")-1 &&
-						    memcmp(Z_STRVAL_P(opline->op2.zv), "get_defined_vars", sizeof("get_defined_vars")-1) == 0) {
+						} else if (Z_STRLEN_P(RT_CONSTANT(op_array, opline->op2)) == sizeof("get_defined_vars")-1 &&
+						    memcmp(Z_STRVAL_P(RT_CONSTANT(op_array, opline->op2)), "get_defined_vars", sizeof("get_defined_vars")-1) == 0) {
 							info->flags |= ZEND_JIT_FUNC_TOO_DYNAMIC;
-						} else if (Z_STRLEN_P(opline->op2.zv) == sizeof("func_num_args")-1 &&
-						    memcmp(Z_STRVAL_P(opline->op2.zv), "func_num_args", sizeof("func_num_args")-1) == 0) {
+						} else if (Z_STRLEN_P(RT_CONSTANT(op_array, opline->op2)) == sizeof("func_num_args")-1 &&
+						    memcmp(Z_STRVAL_P(RT_CONSTANT(op_array, opline->op2)), "func_num_args", sizeof("func_num_args")-1) == 0) {
 							info->flags |= ZEND_JIT_FUNC_VARARG;
-						} else if (Z_STRLEN_P(opline->op2.zv) == sizeof("func_get_arg")-1 &&
-						    memcmp(Z_STRVAL_P(opline->op2.zv), "func_get_arg", sizeof("func_get_arg")-1) == 0) {
+						} else if (Z_STRLEN_P(RT_CONSTANT(op_array, opline->op2)) == sizeof("func_get_arg")-1 &&
+						    memcmp(Z_STRVAL_P(RT_CONSTANT(op_array, opline->op2)), "func_get_arg", sizeof("func_get_arg")-1) == 0) {
 							info->flags |= ZEND_JIT_FUNC_VARARG;
-						} else if (Z_STRLEN_P(opline->op2.zv) == sizeof("func_get_args")-1 &&
-						    memcmp(Z_STRVAL_P(opline->op2.zv), "func_get_args", sizeof("func_get_args")-1) == 0) {
+						} else if (Z_STRLEN_P(RT_CONSTANT(op_array, opline->op2)) == sizeof("func_get_args")-1 &&
+						    memcmp(Z_STRVAL_P(RT_CONSTANT(op_array, opline->op2)), "func_get_args", sizeof("func_get_args")-1) == 0) {
 							info->flags |= ZEND_JIT_FUNC_VARARG;
 						}
 					}
@@ -1115,7 +1115,7 @@ int zend_jit_build_cfg(zend_jit_context *ctx, zend_op_array *op_array)
 			case ZEND_DO_FCALL:
 				info->flags |= ZEND_JIT_FUNC_HAS_CALLS;
 #if 0 // LLVM backend doesn't support stackless VM
-				if ((fn = zend_hash_find_ptr(EG(function_table), Z_STR_P(opline->op1.zv))) != NULL &&
+				if ((fn = zend_hash_find_ptr(EG(function_table), Z_STR_P(RT_CONSTANT(op_array, opline->op1)))) != NULL &&
                     fn->type != ZEND_INTERNAL_FUNCTION) {
 					ENTRY_BLOCK(i + 1);
 				}
@@ -1123,7 +1123,7 @@ int zend_jit_build_cfg(zend_jit_context *ctx, zend_op_array *op_array)
 				break;
 			case ZEND_FAST_CALL:
 				info->flags |= ZEND_JIT_FUNC_TOO_DYNAMIC;
-				TARGET_BLOCK(opline->op1.jmp_addr - op_array->opcodes);
+				TARGET_BLOCK(OP_JMP_ADDR(opline, opline->op1) - op_array->opcodes);
 				if (opline->extended_value) {
 					TARGET_BLOCK(opline->op2.opline_num);
 				}
@@ -1140,14 +1140,14 @@ int zend_jit_build_cfg(zend_jit_context *ctx, zend_op_array *op_array)
 				break;
 			case ZEND_GOTO:
 			case ZEND_JMP:
-				TARGET_BLOCK(opline->op1.jmp_addr - op_array->opcodes);
+				TARGET_BLOCK(OP_JMP_ADDR(opline, opline->op1) - op_array->opcodes);
 				if (i + 1 < op_array->last) {
 					TARGET_BLOCK(i + 1);
 				}
 				break;
 			case ZEND_JMPZNZ:
-				TARGET_BLOCK((zend_op*)(((char*)opline) + opline->extended_value) - op_array->opcodes);
-				TARGET_BLOCK(opline->op2.jmp_addr - op_array->opcodes);
+				TARGET_BLOCK((zend_op*)(((char*)opline) + (int)opline->extended_value) - op_array->opcodes);
+				TARGET_BLOCK(OP_JMP_ADDR(opline, opline->op2) - op_array->opcodes);
 				if (i + 1 < op_array->last) {
 					TARGET_BLOCK(i + 1);
 				}
@@ -1158,7 +1158,7 @@ int zend_jit_build_cfg(zend_jit_context *ctx, zend_op_array *op_array)
 			case ZEND_JMPNZ_EX:
 			case ZEND_JMP_SET:
 			case ZEND_COALESCE:
-				TARGET_BLOCK(opline->op2.jmp_addr - op_array->opcodes);
+				TARGET_BLOCK(OP_JMP_ADDR(opline, opline->op2) - op_array->opcodes);
 				FOLLOW_BLOCK(i + 1);
 				break;
 			case ZEND_CATCH:
@@ -1167,19 +1167,19 @@ int zend_jit_build_cfg(zend_jit_context *ctx, zend_op_array *op_array)
 				FOLLOW_BLOCK(i + 1);
 				break;
 			case ZEND_FE_FETCH:
-				TARGET_BLOCK(opline->op2.jmp_addr - op_array->opcodes);
+				TARGET_BLOCK(OP_JMP_ADDR(opline, opline->op2) - op_array->opcodes);
 				FOLLOW_BLOCK(i + 2);
 				break;
 			case ZEND_FE_RESET:
 			case ZEND_NEW:
-				TARGET_BLOCK(opline->op2.jmp_addr - op_array->opcodes);
+				TARGET_BLOCK(OP_JMP_ADDR(opline, opline->op2) - op_array->opcodes);
 				FOLLOW_BLOCK(i + 1);
 				break;
 			case ZEND_DECLARE_LAMBDA_FUNCTION: {
 					zend_op_array *lambda_op_array;
 
 					if (ctx->main_persistent_script &&
-					    (lambda_op_array = zend_hash_find_ptr(&ctx->main_persistent_script->function_table, Z_STR_P(opline->op1.zv))) != NULL) {
+					    (lambda_op_array = zend_hash_find_ptr(&ctx->main_persistent_script->function_table, Z_STR_P(RT_CONSTANT(op_array, opline->op1)))) != NULL) {
 						if (lambda_op_array->type == ZEND_USER_FUNCTION &&
 						    lambda_op_array->static_variables) {
 							// FIXME: Really we should try to perform alias
@@ -1278,10 +1278,10 @@ int zend_jit_build_cfg(zend_jit_context *ctx, zend_op_array *op_array)
 			case ZEND_BRK:
 			case ZEND_CONT:
 				if (opline->op2_type == IS_CONST &&
-				    Z_TYPE_P(opline->op2.zv) == IS_LONG &&
+				    Z_TYPE_P(RT_CONSTANT(op_array, opline->op2)) == IS_LONG &&
 				    (int)opline->op1.num >= 0) {
 					int array_offset = opline->op1.num;
-					int nest_levels = Z_LVAL_P(opline->op2.zv);
+					int nest_levels = Z_LVAL_P(RT_CONSTANT(op_array, opline->op2));
 					zend_brk_cont_element *jmp_to;
 
 					do {
@@ -1311,11 +1311,11 @@ int zend_jit_build_cfg(zend_jit_context *ctx, zend_op_array *op_array)
 #endif
 			case ZEND_GOTO:
 			case ZEND_JMP:
-				record_successor(block, j, 0, block_map[opline->op1.jmp_addr - op_array->opcodes]);
+				record_successor(block, j, 0, block_map[OP_JMP_ADDR(opline, opline->op1) - op_array->opcodes]);
 				break;
 			case ZEND_JMPZNZ:
-				record_successor(block, j, 0, block_map[(zend_op*)(((char*)opline) + opline->extended_value) - op_array->opcodes]);
-				record_successor(block, j, 1, block_map[opline->op2.jmp_addr - op_array->opcodes]);
+				record_successor(block, j, 0, block_map[(zend_op*)(((char*)opline) + (int)opline->extended_value) - op_array->opcodes]);
+				record_successor(block, j, 1, block_map[OP_JMP_ADDR(opline, opline->op2) - op_array->opcodes]);
 				break;
 			case ZEND_JMPZ:
 			case ZEND_JMPNZ:
@@ -1323,7 +1323,7 @@ int zend_jit_build_cfg(zend_jit_context *ctx, zend_op_array *op_array)
 			case ZEND_JMPNZ_EX:
 			case ZEND_JMP_SET:
 			case ZEND_COALESCE:
-				record_successor(block, j, 0, block_map[opline->op2.jmp_addr - op_array->opcodes]);
+				record_successor(block, j, 0, block_map[OP_JMP_ADDR(opline, opline->op2) - op_array->opcodes]);
 				record_successor(block, j, 1, j + 1);
 				break;
 			case ZEND_CATCH:
@@ -1332,7 +1332,7 @@ int zend_jit_build_cfg(zend_jit_context *ctx, zend_op_array *op_array)
 				break;
 			case ZEND_OP_DATA:
 				if ((opline-1)->opcode == ZEND_FE_FETCH) {
-					record_successor(block, j, 0, block_map[(opline-1)->op2.jmp_addr - op_array->opcodes]);
+					record_successor(block, j, 0, block_map[OP_JMP_ADDR(opline-1, (opline-1)->op2) - op_array->opcodes]);
 					record_successor(block, j, 1, j + 1);
 				} else {
 					record_successor(block, j, 0, j + 1);
@@ -1340,7 +1340,7 @@ int zend_jit_build_cfg(zend_jit_context *ctx, zend_op_array *op_array)
 				break;
 			case ZEND_FE_RESET:
 			case ZEND_NEW:
-				record_successor(block, j, 0, block_map[opline->op2.jmp_addr - op_array->opcodes]);
+				record_successor(block, j, 0, block_map[OP_JMP_ADDR(opline, opline->op2) - op_array->opcodes]);
 				record_successor(block, j, 1, j + 1);
 				break;
 			default:
@@ -2263,7 +2263,7 @@ static int zend_jit_build_ssa(zend_jit_context *ctx, zend_op_array *op_array)
 		 */
 		switch (opline->opcode) {
 			case ZEND_JMPZ:
-				if (info->block[info->block[j].successors[0]].start == opline->op2.jmp_addr - op_array->opcodes) {
+				if (info->block[info->block[j].successors[0]].start == OP_JMP_ADDR(opline, opline->op2) - op_array->opcodes) {
 					bf = info->block[j].successors[0];
 					bt = info->block[j].successors[1];
 				} else {
@@ -2272,7 +2272,7 @@ static int zend_jit_build_ssa(zend_jit_context *ctx, zend_op_array *op_array)
 				}
 				break;
 			case ZEND_JMPNZ:
-				if (info->block[info->block[j].successors[0]].start == opline->op2.jmp_addr - op_array->opcodes) {
+				if (info->block[info->block[j].successors[0]].start == OP_JMP_ADDR(opline, opline->op2) - op_array->opcodes) {
 					bt = info->block[j].successors[0];
 					bf = info->block[j].successors[1];
 				} else {
@@ -2281,7 +2281,7 @@ static int zend_jit_build_ssa(zend_jit_context *ctx, zend_op_array *op_array)
 				}
 				break;
 		    case ZEND_JMPZNZ:
-				if (info->block[info->block[j].successors[0]].start == opline->op2.jmp_addr - op_array->opcodes) {
+				if (info->block[info->block[j].successors[0]].start == OP_JMP_ADDR(opline, opline->op2) - op_array->opcodes) {
 					bf = info->block[j].successors[0];
 					bt = info->block[j].successors[1];
 				} else {
@@ -2325,21 +2325,21 @@ static int zend_jit_build_ssa(zend_jit_context *ctx, zend_op_array *op_array)
 					    } else if (op->opcode == ZEND_ADD) {
 					    	if (op->op1_type == IS_CV &&
 					    	    op->op2_type == IS_CONST &&
-							    Z_TYPE_P(op->op2.zv) == IS_LONG) {
+							    Z_TYPE_P(RT_CONSTANT(op_array, op->op2)) == IS_LONG) {
 					    		var1 = EX_VAR_TO_NUM(op->op1.var);
-								val2 -= Z_LVAL_P(op->op2.zv);						
+								val2 -= Z_LVAL_P(RT_CONSTANT(op_array, op->op2));						
 					    	} else if (op->op2_type == IS_CV &&
 					    	    op->op1_type == IS_CONST &&
-							    Z_TYPE_P(op->op1.zv) == IS_LONG) {
+							    Z_TYPE_P(RT_CONSTANT(op_array, op->op1)) == IS_LONG) {
 					    		var1 = EX_VAR_TO_NUM(op->op2.var);
-								val2 -= Z_LVAL_P(op->op1.zv);
+								val2 -= Z_LVAL_P(RT_CONSTANT(op_array, op->op1));
 							}							
 					    } else if (op->opcode == ZEND_SUB) {
 					    	if (op->op1_type == IS_CV &&
 					    	    op->op2_type == IS_CONST &&
-							    Z_TYPE_P(op->op2.zv) == IS_LONG) {
+							    Z_TYPE_P(RT_CONSTANT(op_array, op->op2)) == IS_LONG) {
 					    		var1 = EX_VAR_TO_NUM(op->op1.var);
-								val2 += Z_LVAL_P(op->op2.zv);						
+								val2 += Z_LVAL_P(RT_CONSTANT(op_array, op->op2));						
 							}
 					    }
 					    break;
@@ -2368,21 +2368,21 @@ static int zend_jit_build_ssa(zend_jit_context *ctx, zend_op_array *op_array)
 					    } else if (op->opcode == ZEND_ADD) {
 					    	if (op->op1_type == IS_CV &&
 					    	    op->op2_type == IS_CONST &&
-							    Z_TYPE_P(op->op2.zv) == IS_LONG) {
+							    Z_TYPE_P(RT_CONSTANT(op_array, op->op2)) == IS_LONG) {
 					    		var2 = EX_VAR_TO_NUM(op->op1.var);
-								val1 -= Z_LVAL_P(op->op2.zv);						
+								val1 -= Z_LVAL_P(RT_CONSTANT(op_array, op->op2));						
 					    	} else if (op->op2_type == IS_CV &&
 					    	    op->op1_type == IS_CONST &&
-							    Z_TYPE_P(op->op1.zv) == IS_LONG) {
+							    Z_TYPE_P(RT_CONSTANT(op_array, op->op1)) == IS_LONG) {
 					    		var2 = EX_VAR_TO_NUM(op->op2.var);
-								val1 -= Z_LVAL_P(op->op1.zv);
+								val1 -= Z_LVAL_P(RT_CONSTANT(op_array, op->op1));
 							}							
 					    } else if (op->opcode == ZEND_SUB) {
 					    	if (op->op1_type == IS_CV &&
 					    	    op->op2_type == IS_CONST &&
-							    Z_TYPE_P(op->op2.zv) == IS_LONG) {
+							    Z_TYPE_P(RT_CONSTANT(op_array, op->op2)) == IS_LONG) {
 					    		var2 = EX_VAR_TO_NUM(op->op1.var);
-								val1 += Z_LVAL_P(op->op2.zv);						
+								val1 += Z_LVAL_P(RT_CONSTANT(op_array, op->op2));						
 							}
 					    }
 					    break;
@@ -2396,26 +2396,26 @@ static int zend_jit_build_ssa(zend_jit_context *ctx, zend_op_array *op_array)
 				val2 -= tmp;
 			} else if (var1 >= 0 && var2 < 0) {
 				if ((opline-1)->op2_type == IS_CONST &&
-				    Z_TYPE_P((opline-1)->op2.zv) == IS_LONG) {
-					val2 += Z_LVAL_P((opline-1)->op2.zv);
+				    Z_TYPE_P(RT_CONSTANT(op_array, (opline-1)->op2)) == IS_LONG) {
+					val2 += Z_LVAL_P(RT_CONSTANT(op_array, (opline-1)->op2));
 				} else if ((opline-1)->op2_type == IS_CONST &&
-				    Z_TYPE_P((opline-1)->op2.zv) == IS_FALSE) {
+				    Z_TYPE_P(RT_CONSTANT(op_array, (opline-1)->op2)) == IS_FALSE) {
 					val2 += 0;
 				} else if ((opline-1)->op2_type == IS_CONST &&
-				    Z_TYPE_P((opline-1)->op2.zv) == IS_TRUE) {
+				    Z_TYPE_P(RT_CONSTANT(op_array, (opline-1)->op2)) == IS_TRUE) {
 					val2 += 12;
 			    } else {
 			    	var1 = -1;
 				}
 			} else if (var1 < 0 && var2 >= 0) {
 				if ((opline-1)->op1_type == IS_CONST &&
-				    Z_TYPE_P((opline-1)->op1.zv) == IS_LONG) {
-					val1 += Z_LVAL_P((opline-1)->op1.zv);
+				    Z_TYPE_P(RT_CONSTANT(op_array, (opline-1)->op1)) == IS_LONG) {
+					val1 += Z_LVAL_P(RT_CONSTANT(op_array, (opline-1)->op1));
 				} else if ((opline-1)->op1_type == IS_CONST &&
-				    Z_TYPE_P((opline-1)->op1.zv) == IS_FALSE) {
+				    Z_TYPE_P(RT_CONSTANT(op_array, (opline-1)->op1)) == IS_FALSE) {
 					val1 += 0;
 				} else if ((opline-1)->op1_type == IS_CONST &&
-				    Z_TYPE_P((opline-1)->op1.zv) == IS_TRUE) {
+				    Z_TYPE_P(RT_CONSTANT(op_array, (opline-1)->op1)) == IS_TRUE) {
 					val1 += 1;
 			    } else {
 			    	var2 = -1;

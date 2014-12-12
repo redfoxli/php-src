@@ -92,7 +92,7 @@ ZEND_FASTCALL zend_ulong zend_jit_helper_slow_str_index(zval *dim, uint32_t type
 }
 
 ZEND_FASTCALL void zend_jit_helper_check_internal_type_hint(zend_function *zf, uint32_t arg_num, zval *arg) {
-	zend_arg_info *cur_arg_info;
+	zend_internal_arg_info *cur_arg_info;
 	char *need_msg;
 	zend_class_entry *ce;
 
@@ -101,9 +101,9 @@ ZEND_FASTCALL void zend_jit_helper_check_internal_type_hint(zend_function *zf, u
 	}
 
 	if (EXPECTED(arg_num <= zf->common.num_args)) {
-		cur_arg_info = &zf->common.arg_info[arg_num-1];
+		cur_arg_info = &zf->internal_function.arg_info[arg_num-1];
 	} else if (zf->common.fn_flags & ZEND_ACC_VARIADIC) {
-		cur_arg_info = &zf->common.arg_info[zf->common.num_args-1];
+		cur_arg_info = &zf->internal_function.arg_info[zf->common.num_args-1];
 	} else {
 		return;
 	}

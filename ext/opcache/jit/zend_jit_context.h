@@ -383,12 +383,12 @@ static inline int ssa_result_var(zend_op_array *op_array, zend_op *opline)
 		zend_jit_func_info *info = JIT_DATA(op_array); \
 		if (opline->opN##_type == IS_CONST) {							\
 			uint32_t tmp; \
-			if (Z_TYPE_P(opline->opN.zv) == IS_CONSTANT) { \
+			if (Z_TYPE_P(RT_CONSTANT(op_array, opline->opN)) == IS_CONSTANT) { \
 				tmp = MAY_BE_ANY; \
-			} else if (Z_TYPE_P(opline->opN.zv) == IS_CONSTANT_AST) { \
+			} else if (Z_TYPE_P(RT_CONSTANT(op_array, opline->opN)) == IS_CONSTANT_AST) { \
 				tmp = MAY_BE_ANY; \
 			} else { \
-				tmp = (1 << (Z_TYPE_P(opline->opN.zv) - 1)) | MAY_BE_DEF | MAY_BE_RC1; \
+				tmp = (1 << (Z_TYPE_P(RT_CONSTANT(op_array, opline->opN)) - 1)) | MAY_BE_DEF | MAY_BE_RC1; \
 			} \
 			if (tmp & MAY_BE_ARRAY) { \
 				/* TODO: more accurate array constant handling ??? */ \
@@ -441,7 +441,7 @@ DEFINE_SSA_OP_INFO(op2)
 	static inline long ssa_##opN##_has_range(zend_op_array *op_array, zend_op *opline) \
 	{ \
 		return ((opline->opN##_type == IS_CONST && \
-			    (Z_TYPE_P(opline->opN.zv) == IS_LONG || Z_TYPE_P(opline->opN.zv) == IS_TRUE || Z_TYPE_P(opline->opN.zv) == IS_FALSE || Z_TYPE_P(opline->opN.zv) == IS_NULL)) || \
+			    (Z_TYPE_P(RT_CONSTANT(op_array, opline->opN)) == IS_LONG || Z_TYPE_P(RT_CONSTANT(op_array, opline->opN)) == IS_TRUE || Z_TYPE_P(RT_CONSTANT(op_array, opline->opN)) == IS_FALSE || Z_TYPE_P(RT_CONSTANT(op_array, opline->opN)) == IS_NULL)) || \
 		       (opline->opN##_type != IS_UNUSED && \
 		        JIT_DATA(op_array)->ssa && \
 		        JIT_DATA(op_array)->ssa_var_info && \
@@ -453,13 +453,13 @@ DEFINE_SSA_OP_INFO(op2)
 	static inline long ssa_##opN##_min_range(zend_op_array *op_array, zend_op *opline) \
 	{ \
 		if (opline->opN##_type == IS_CONST) { \
-			if (Z_TYPE_P(opline->opN.zv) == IS_LONG) { \
-				return Z_LVAL_P(opline->opN.zv); \
-			} else if (Z_TYPE_P(opline->opN.zv) == IS_TRUE) { \
+			if (Z_TYPE_P(RT_CONSTANT(op_array, opline->opN)) == IS_LONG) { \
+				return Z_LVAL_P(RT_CONSTANT(op_array, opline->opN)); \
+			} else if (Z_TYPE_P(RT_CONSTANT(op_array, opline->opN)) == IS_TRUE) { \
 				return 1; \
-			} else if (Z_TYPE_P(opline->opN.zv) == IS_FALSE) { \
+			} else if (Z_TYPE_P(RT_CONSTANT(op_array, opline->opN)) == IS_FALSE) { \
 				return 0; \
-			} else if (Z_TYPE_P(opline->opN.zv) == IS_NULL) { \
+			} else if (Z_TYPE_P(RT_CONSTANT(op_array, opline->opN)) == IS_NULL) { \
 				return 0; \
 			} \
 		} else if (opline->opN##_type != IS_UNUSED && \
@@ -476,13 +476,13 @@ DEFINE_SSA_OP_INFO(op2)
 	static inline long ssa_##opN##_max_range(zend_op_array *op_array, zend_op *opline) \
 	{ \
 		if (opline->opN##_type == IS_CONST) { \
-			if (Z_TYPE_P(opline->opN.zv) == IS_LONG) { \
-				return Z_LVAL_P(opline->opN.zv); \
-			} else if (Z_TYPE_P(opline->opN.zv) == IS_TRUE) { \
+			if (Z_TYPE_P(RT_CONSTANT(op_array, opline->opN)) == IS_LONG) { \
+				return Z_LVAL_P(RT_CONSTANT(op_array, opline->opN)); \
+			} else if (Z_TYPE_P(RT_CONSTANT(op_array, opline->opN)) == IS_TRUE) { \
 				return 1; \
-			} else if (Z_TYPE_P(opline->opN.zv) == IS_FALSE) { \
+			} else if (Z_TYPE_P(RT_CONSTANT(op_array, opline->opN)) == IS_FALSE) { \
 				return 0; \
-			} else if (Z_TYPE_P(opline->opN.zv) == IS_NULL) { \
+			} else if (Z_TYPE_P(RT_CONSTANT(op_array, opline->opN)) == IS_NULL) { \
 				return 0; \
 			} \
 		} else if (opline->opN##_type != IS_UNUSED && \
@@ -499,7 +499,7 @@ DEFINE_SSA_OP_INFO(op2)
 	static inline char ssa_##opN##_range_underflow(zend_op_array *op_array, zend_op *opline) \
 	{ \
 		if (opline->opN##_type == IS_CONST) { \
-			if (Z_TYPE_P(opline->opN.zv) == IS_LONG || Z_TYPE_P(opline->opN.zv) == IS_TRUE || Z_TYPE_P(opline->opN.zv) == IS_FALSE || Z_TYPE_P(opline->opN.zv) == IS_NULL) { \
+			if (Z_TYPE_P(RT_CONSTANT(op_array, opline->opN)) == IS_LONG || Z_TYPE_P(RT_CONSTANT(op_array, opline->opN)) == IS_TRUE || Z_TYPE_P(RT_CONSTANT(op_array, opline->opN)) == IS_FALSE || Z_TYPE_P(RT_CONSTANT(op_array, opline->opN)) == IS_NULL) { \
 				return 0; \
 			} \
 		} else if (opline->opN##_type != IS_UNUSED && \
@@ -516,7 +516,7 @@ DEFINE_SSA_OP_INFO(op2)
 	static inline char ssa_##opN##_range_overflow(zend_op_array *op_array, zend_op *opline) \
 	{ \
 		if (opline->opN##_type == IS_CONST) { \
-			if (Z_TYPE_P(opline->opN.zv) == IS_LONG || Z_TYPE_P(opline->opN.zv) == IS_TRUE || Z_TYPE_P(opline->opN.zv) == IS_FALSE || Z_TYPE_P(opline->opN.zv) == IS_NULL) { \
+			if (Z_TYPE_P(RT_CONSTANT(op_array, opline->opN)) == IS_LONG || Z_TYPE_P(RT_CONSTANT(op_array, opline->opN)) == IS_TRUE || Z_TYPE_P(RT_CONSTANT(op_array, opline->opN)) == IS_FALSE || Z_TYPE_P(RT_CONSTANT(op_array, opline->opN)) == IS_NULL) { \
 				return 0; \
 			} \
 		} else if (opline->opN##_type != IS_UNUSED && \

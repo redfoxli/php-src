@@ -2827,7 +2827,7 @@ static Value* zend_jit_load_type_c(zend_llvm_ctx &llvm_ctx,
                                    uint32_t       info)
 {
     if (op_type == IS_CONST) {
-		return llvm_ctx.builder.getInt8(Z_TYPE_P(op->zv));
+		return llvm_ctx.builder.getInt8(Z_TYPE_P(RT_CONSTANT(llvm_ctx.op_array, *op)));
 	} else {
 		return zend_jit_load_type(llvm_ctx, zval_addr, ssa_var, info);
 	}
@@ -2843,7 +2843,7 @@ static Value* zend_jit_load_type_info_c(zend_llvm_ctx &llvm_ctx,
                                         uint32_t       info)
 {
     if (op_type == IS_CONST) {
-		return llvm_ctx.builder.getInt32(Z_TYPE_INFO_P(op->zv));
+		return llvm_ctx.builder.getInt32(Z_TYPE_INFO_P(RT_CONSTANT(llvm_ctx.op_array, *op)));
 	}
 	return zend_jit_load_type_info(llvm_ctx, zval_addr, ssa_var, info);
 }
@@ -3140,7 +3140,7 @@ static Value* zend_jit_load_lval_c(zend_llvm_ctx &llvm_ctx,
                                    uint32_t       info)
 {
 	if (op_type == IS_CONST) {
-		return LLVM_GET_LONG(Z_LVAL_P(op->zv));
+		return LLVM_GET_LONG(Z_LVAL_P(RT_CONSTANT(llvm_ctx.op_array, *op)));
 	} else if (ssa_var >=0 &&
 	    ((JIT_DATA(llvm_ctx.op_array)->ssa_var_info[ssa_var].type & MAY_BE_ANY) == MAY_BE_LONG) &&
 		JIT_DATA(llvm_ctx.op_array)->ssa_var_info[ssa_var].has_range &&
@@ -3813,7 +3813,7 @@ static Value* zend_jit_load_operand(zend_llvm_ctx &llvm_ctx,
                                     uint32_t       mode = BP_VAR_R)
 {
 	if (op_type == IS_CONST) {
-		return zend_jit_load_const(llvm_ctx, op->zv);
+		return zend_jit_load_const(llvm_ctx, RT_CONSTANT(llvm_ctx.op_array, *op));
 	} else if (info & MAY_BE_IN_REG) {
 		return NULL;
 	} else if (op_type == IS_TMP_VAR) {
@@ -4079,14 +4079,14 @@ static int zend_jit_copy_value(zend_llvm_ctx &llvm_ctx,
 
 	if (from_info & (MAY_BE_ANY - (MAY_BE_NULL|MAY_BE_FALSE|MAY_BE_TRUE))) {
 		if (from_op_type == IS_CONST) {
-			if (Z_TYPE_P(from_op->zv) == IS_DOUBLE) {
+			if (Z_TYPE_P(RT_CONSTANT(llvm_ctx.op_array, *from_op)) == IS_DOUBLE) {
 #if SIZEOF_ZEND_LONG == 8
 				if (to_info & MAY_BE_IN_REG) {
 					zend_jit_save_zval_dval(llvm_ctx, to_addr, to_ssa_var, to_info,
 						zend_jit_load_dval(llvm_ctx, from_addr, from_ssa_var, from_info));
 				} else {
 					zend_jit_save_zval_lval(llvm_ctx, to_addr, to_ssa_var, to_info,
-						LLVM_GET_LONG(Z_LVAL_P(from_op->zv)));
+						LLVM_GET_LONG(Z_LVAL_P(RT_CONSTANT(llvm_ctx.op_array, *from_op))));
 				}
 #else
 				zend_jit_save_zval_dval(llvm_ctx, to_addr, to_ssa_var, to_info,
@@ -4097,11 +4097,11 @@ static int zend_jit_copy_value(zend_llvm_ctx &llvm_ctx,
 					if ((to_info & (MAY_BE_LONG|MAY_BE_DOUBLE)) == MAY_BE_DOUBLE) {
 						zend_jit_save_zval_dval(llvm_ctx, to_addr, to_ssa_var, to_info,
 							llvm_ctx.builder.CreateSIToFP(
-								LLVM_GET_LONG(Z_LVAL_P(from_op->zv)),
+								LLVM_GET_LONG(Z_LVAL_P(RT_CONSTANT(llvm_ctx.op_array, *from_op))),
 								Type::getDoubleTy(llvm_ctx.context)));
 					} else {
 						zend_jit_save_zval_lval(llvm_ctx, to_addr, to_ssa_var, to_info,
-							LLVM_GET_LONG(Z_LVAL_P(from_op->zv)));
+							LLVM_GET_LONG(Z_LVAL_P(RT_CONSTANT(llvm_ctx.op_array, *from_op))));
 					}
 				} else {
 					zend_jit_save_zval_ptr(llvm_ctx, to_addr, to_ssa_var, to_info,
@@ -4111,11 +4111,11 @@ static int zend_jit_copy_value(zend_llvm_ctx &llvm_ctx,
 				if ((to_info & (MAY_BE_LONG|MAY_BE_DOUBLE)) == MAY_BE_DOUBLE) {
 					zend_jit_save_zval_dval(llvm_ctx, to_addr, to_ssa_var, to_info,
 						llvm_ctx.builder.CreateSIToFP(
-							LLVM_GET_LONG(Z_LVAL_P(from_op->zv)),
+							LLVM_GET_LONG(Z_LVAL_P(RT_CONSTANT(llvm_ctx.op_array, *from_op))),
 							Type::getDoubleTy(llvm_ctx.context)));
 				} else {
 					zend_jit_save_zval_lval(llvm_ctx, to_addr, to_ssa_var, to_info,
-						LLVM_GET_LONG(Z_LVAL_P(from_op->zv)));
+						LLVM_GET_LONG(Z_LVAL_P(RT_CONSTANT(llvm_ctx.op_array, *from_op))));
 				}
 			}
 		} else {
@@ -4569,7 +4569,7 @@ static void zend_jit_make_printable_zval(zend_llvm_ctx    &llvm_ctx,
 {
 	if (expr_op_type == IS_CONST) {
 		zval str;
-		int use_copy = zend_make_printable_zval(expr_op->zv, &str);
+		int use_copy = zend_make_printable_zval(RT_CONSTANT(llvm_ctx.op_array, *expr_op), &str);
 
 		if (use_copy) {
 			*copy_str = llvm_ctx.builder.CreateIntToPtr(
@@ -4584,7 +4584,7 @@ static void zend_jit_make_printable_zval(zend_llvm_ctx    &llvm_ctx,
 				*bb_string = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 			}
 			*expr_str = llvm_ctx.builder.CreateIntToPtr(
-					LLVM_GET_LONG((zend_uintptr_t)Z_STR_P(expr_op->zv)),
+					LLVM_GET_LONG((zend_uintptr_t)Z_STR_P(RT_CONSTANT(llvm_ctx.op_array, *expr_op))),
 					PointerType::getUnqual(llvm_ctx.zend_string_type));
 			llvm_ctx.builder.CreateBr(*bb_string);
 		}
@@ -5121,9 +5121,9 @@ static Value* zend_jit_fetch_dimension_address_inner(zend_llvm_ctx   &llvm_ctx,
 	// JIT: switch(dim->type)
 	if (dim_op_type == IS_CONST) {
 		zend_ulong num_index;
-		switch (Z_TYPE_P(dim_op->zv)) {
+		switch (Z_TYPE_P(RT_CONSTANT(llvm_ctx.op_array, *dim_op))) {
 			case IS_DOUBLE:
-				num_index = zend_dval_to_lval(Z_DVAL_P(dim_op->zv));
+				num_index = zend_dval_to_lval(Z_DVAL_P(RT_CONSTANT(llvm_ctx.op_array, *dim_op)));
 				goto numeric_dim;
 				break;
 			case IS_TRUE:
@@ -5133,7 +5133,7 @@ static Value* zend_jit_fetch_dimension_address_inner(zend_llvm_ctx   &llvm_ctx,
 				num_index = 0;
 				goto numeric_dim;
 			case IS_LONG:
-				num_index = Z_LVAL_P(dim_op->zv);
+				num_index = Z_LVAL_P(RT_CONSTANT(llvm_ctx.op_array, *dim_op));
 numeric_dim:
 				PHI_ADD(index, LLVM_GET_LONG(num_index));
 				break;
@@ -5141,12 +5141,12 @@ numeric_dim:
 				PHI_ADD(offset, llvm_ctx._CG_empty_string);
 				break;
 			case IS_STRING:
-				if (ZEND_HANDLE_NUMERIC(Z_STR_P(dim_op->zv), num_index)) {
+				if (ZEND_HANDLE_NUMERIC(Z_STR_P(RT_CONSTANT(llvm_ctx.op_array, *dim_op)), num_index)) {
 					goto numeric_dim;
 				} else {
 					PHI_ADD(offset,
 							llvm_ctx.builder.CreateIntToPtr(
-								LLVM_GET_LONG((zend_uintptr_t)Z_STR_P(dim_op->zv)),
+								LLVM_GET_LONG((zend_uintptr_t)Z_STR_P(RT_CONSTANT(llvm_ctx.op_array, *dim_op))),
 								PointerType::getUnqual(llvm_ctx.zend_string_type)));
 				}
 				break;
@@ -5647,9 +5647,9 @@ static Value* zend_jit_str_offset_index(zend_llvm_ctx &llvm_ctx,
 		zval tmp;
 		int is_long;
 
-		switch (Z_TYPE_P(dim_op->zv)) {
+		switch (Z_TYPE_P(RT_CONSTANT(llvm_ctx.op_array, *dim_op))) {
 			case IS_STRING:
-				if ((is_long = is_long_numeric_string(Z_STRVAL_P(dim_op->zv), Z_STRLEN_P(dim_op->zv))) == 1) {
+				if ((is_long = is_long_numeric_string(Z_STRVAL_P(RT_CONSTANT(llvm_ctx.op_array, *dim_op)), Z_STRLEN_P(RT_CONSTANT(llvm_ctx.op_array, *dim_op)))) == 1) {
 					break;
 				} else if (is_long == -1 && fetch_type != BP_VAR_IS) {
 					zend_jit_error(
@@ -5660,7 +5660,7 @@ static Value* zend_jit_str_offset_index(zend_llvm_ctx &llvm_ctx,
 							LLVM_GET_CONST_STRING("A non well formed numeric value encountered"));
 				} else if (fetch_type != BP_VAR_IS) {
 					zend_jit_error(llvm_ctx, opline, E_WARNING, "Illegal string offset '%s'",
-						   LLVM_GET_CONST_STRING(Z_STRVAL_P(dim_op->zv)));
+						   LLVM_GET_CONST_STRING(Z_STRVAL_P(RT_CONSTANT(llvm_ctx.op_array, *dim_op))));
 				}
 				break;
 			case IS_DOUBLE:
@@ -5687,7 +5687,7 @@ static Value* zend_jit_str_offset_index(zend_llvm_ctx &llvm_ctx,
 						LLVM_GET_CONST_STRING("Illegal offset type"));
 				break;
 		}
-		PHI_ADD(index, LLVM_GET_LONG(zval_get_long(dim_op->zv)));
+		PHI_ADD(index, LLVM_GET_LONG(zval_get_long(RT_CONSTANT(llvm_ctx.op_array, *dim_op))));
 	} else {
 		BasicBlock *bb_dim_long = NULL;
 		BasicBlock *bb_dim_else = NULL;
@@ -7780,7 +7780,7 @@ static int zend_jit_jmpznz(zend_llvm_ctx    &llvm_ctx,
 	if (OP1_OP_TYPE() == IS_CONST) {
 		// Convert to unconditional branch
 		llvm_ctx.builder.CreateBr(
-			zval_is_true(OP1_OP()->zv) ? bb_true : bb_false);
+			zval_is_true(RT_CONSTANT(llvm_ctx.op_array, *OP1_OP())) ? bb_true : bb_false);
 		return 1;
 	} else if (!OP1_MAY_BE(MAY_BE_ANY - (MAY_BE_NULL | MAY_BE_FALSE))) {
 		llvm_ctx.builder.CreateBr(bb_false);
@@ -8458,7 +8458,7 @@ static int zend_jit_cmp(zend_llvm_ctx    &llvm_ctx,
 		// Slow path
 		if (opline->opcode == ZEND_IS_IDENTICAL &&
 		    OP1_OP_TYPE() == IS_CONST &&
-		    Z_TYPE_P(OP1_OP()->zv) == IS_NULL) {
+		    Z_TYPE_P(RT_CONSTANT(llvm_ctx.op_array, *OP1_OP())) == IS_NULL) {
 			if (!OP2_MAY_BE(MAY_BE_NULL)) {
 				cmp = llvm_ctx.builder.getInt1(0);
 			} else if (!OP2_MAY_BE(MAY_BE_ANY-MAY_BE_NULL)) {
@@ -8474,7 +8474,7 @@ static int zend_jit_cmp(zend_llvm_ctx    &llvm_ctx,
 			}
 		} else if (opline->opcode == ZEND_IS_NOT_IDENTICAL &&
 		    OP1_OP_TYPE() == IS_CONST &&
-		    Z_TYPE_P(OP1_OP()->zv) == IS_NULL) {
+		    Z_TYPE_P(RT_CONSTANT(llvm_ctx.op_array, *OP1_OP())) == IS_NULL) {
 			if (!OP2_MAY_BE(MAY_BE_NULL)) {
 				cmp = llvm_ctx.builder.getInt1(1);
 			} else if (!OP2_MAY_BE(MAY_BE_ANY-MAY_BE_NULL)) {
@@ -8490,7 +8490,7 @@ static int zend_jit_cmp(zend_llvm_ctx    &llvm_ctx,
 			}
 		} else if (opline->opcode == ZEND_IS_IDENTICAL &&
 		    OP2_OP_TYPE() == IS_CONST &&
-		    Z_TYPE_P(OP2_OP()->zv) == IS_NULL) {
+		    Z_TYPE_P(RT_CONSTANT(llvm_ctx.op_array, *OP2_OP())) == IS_NULL) {
 			if (!OP1_MAY_BE(MAY_BE_NULL)) {
 				cmp = llvm_ctx.builder.getInt1(0);
 			} else if (!OP1_MAY_BE(MAY_BE_ANY-MAY_BE_NULL)) {
@@ -8506,7 +8506,7 @@ static int zend_jit_cmp(zend_llvm_ctx    &llvm_ctx,
 			}
 		} else if (opline->opcode == ZEND_IS_NOT_IDENTICAL &&
 		    OP2_OP_TYPE() == IS_CONST &&
-		    Z_TYPE_P(OP2_OP()->zv) == IS_NULL) {
+		    Z_TYPE_P(RT_CONSTANT(llvm_ctx.op_array, *OP2_OP())) == IS_NULL) {
 			if (!OP1_MAY_BE(MAY_BE_NULL)) {
 				cmp = llvm_ctx.builder.getInt1(1);
 			} else if (!OP1_MAY_BE(MAY_BE_ANY-MAY_BE_NULL)) {
@@ -8522,7 +8522,7 @@ static int zend_jit_cmp(zend_llvm_ctx    &llvm_ctx,
 			}
 		} else if (opline->opcode == ZEND_IS_IDENTICAL &&
 		    OP1_OP_TYPE() == IS_CONST &&
-		    Z_TYPE_P(OP1_OP()->zv) == IS_FALSE) {
+		    Z_TYPE_P(RT_CONSTANT(llvm_ctx.op_array, *OP1_OP())) == IS_FALSE) {
 			if (!OP2_MAY_BE(MAY_BE_FALSE)) {
 				cmp = llvm_ctx.builder.getInt1(0);
 			} else if (!OP2_MAY_BE(MAY_BE_ANY-MAY_BE_FALSE)) {
@@ -8538,7 +8538,7 @@ static int zend_jit_cmp(zend_llvm_ctx    &llvm_ctx,
 			}
 		} else if (opline->opcode == ZEND_IS_IDENTICAL &&
 		    OP1_OP_TYPE() == IS_CONST &&
-		    Z_TYPE_P(OP1_OP()->zv) == IS_TRUE) {
+		    Z_TYPE_P(RT_CONSTANT(llvm_ctx.op_array, *OP1_OP())) == IS_TRUE) {
 			if (!OP2_MAY_BE(MAY_BE_TRUE)) {
 				cmp = llvm_ctx.builder.getInt1(0);
 			} else if (!OP2_MAY_BE(MAY_BE_ANY-MAY_BE_TRUE)) {
@@ -8554,7 +8554,7 @@ static int zend_jit_cmp(zend_llvm_ctx    &llvm_ctx,
 			}
 		} else if (opline->opcode == ZEND_IS_NOT_IDENTICAL &&
 		    OP1_OP_TYPE() == IS_CONST &&
-		    Z_TYPE_P(OP1_OP()->zv) == IS_FALSE) {
+		    Z_TYPE_P(RT_CONSTANT(llvm_ctx.op_array, *OP1_OP())) == IS_FALSE) {
 			if (!OP2_MAY_BE(MAY_BE_FALSE)) {
 				cmp = llvm_ctx.builder.getInt1(1);
 			} else if (!OP2_MAY_BE(MAY_BE_ANY-MAY_BE_FALSE)) {
@@ -8570,7 +8570,7 @@ static int zend_jit_cmp(zend_llvm_ctx    &llvm_ctx,
 			}
 		} else if (opline->opcode == ZEND_IS_NOT_IDENTICAL &&
 		    OP1_OP_TYPE() == IS_CONST &&
-		    Z_TYPE_P(OP1_OP()->zv) == IS_TRUE) {
+		    Z_TYPE_P(RT_CONSTANT(llvm_ctx.op_array, *OP1_OP())) == IS_TRUE) {
 			if (!OP2_MAY_BE(MAY_BE_TRUE)) {
 				cmp = llvm_ctx.builder.getInt1(1);
 			} else if (!OP2_MAY_BE(MAY_BE_ANY-MAY_BE_TRUE)) {
@@ -8586,7 +8586,7 @@ static int zend_jit_cmp(zend_llvm_ctx    &llvm_ctx,
 			}
 		} else if (opline->opcode == ZEND_IS_IDENTICAL &&
 		    OP2_OP_TYPE() == IS_CONST &&
-		    Z_TYPE_P(OP2_OP()->zv) == IS_FALSE) {
+		    Z_TYPE_P(RT_CONSTANT(llvm_ctx.op_array, *OP2_OP())) == IS_FALSE) {
 			if (!OP1_MAY_BE(MAY_BE_FALSE)) {
 				cmp = llvm_ctx.builder.getInt1(0);
 			} else if (!OP1_MAY_BE(MAY_BE_ANY-MAY_BE_FALSE)) {
@@ -8602,7 +8602,7 @@ static int zend_jit_cmp(zend_llvm_ctx    &llvm_ctx,
 			}
 		} else if (opline->opcode == ZEND_IS_IDENTICAL &&
 		    OP2_OP_TYPE() == IS_CONST &&
-		    Z_TYPE_P(OP2_OP()->zv) == IS_TRUE) {
+		    Z_TYPE_P(RT_CONSTANT(llvm_ctx.op_array, *OP2_OP())) == IS_TRUE) {
 			if (!OP1_MAY_BE(MAY_BE_TRUE)) {
 				cmp = llvm_ctx.builder.getInt1(0);
 			} else if (!OP1_MAY_BE(MAY_BE_ANY-MAY_BE_TRUE)) {
@@ -8618,7 +8618,7 @@ static int zend_jit_cmp(zend_llvm_ctx    &llvm_ctx,
 			}
 		} else if (opline->opcode == ZEND_IS_NOT_IDENTICAL &&
 		    OP2_OP_TYPE() == IS_CONST &&
-		    Z_TYPE_P(OP2_OP()->zv) == IS_FALSE) {
+		    Z_TYPE_P(RT_CONSTANT(llvm_ctx.op_array, *OP2_OP())) == IS_FALSE) {
 			if (!OP1_MAY_BE(MAY_BE_FALSE)) {
 				cmp = llvm_ctx.builder.getInt1(1);
 			} else if (!OP1_MAY_BE(MAY_BE_ANY-MAY_BE_FALSE)) {
@@ -8634,7 +8634,7 @@ static int zend_jit_cmp(zend_llvm_ctx    &llvm_ctx,
 			}
 		} else if (opline->opcode == ZEND_IS_NOT_IDENTICAL &&
 		    OP2_OP_TYPE() == IS_CONST &&
-		    Z_TYPE_P(OP2_OP()->zv) == IS_TRUE) {
+		    Z_TYPE_P(RT_CONSTANT(llvm_ctx.op_array, *OP2_OP())) == IS_TRUE) {
 			if (!OP1_MAY_BE(MAY_BE_TRUE)) {
 				cmp = llvm_ctx.builder.getInt1(1);
 			} else if (!OP1_MAY_BE(MAY_BE_ANY-MAY_BE_TRUE)) {
@@ -8854,8 +8854,8 @@ static int zend_jit_math(zend_llvm_ctx    &llvm_ctx,
 			long op2_max;
 
 			if (op1_op_type == IS_CONST &&
-			    Z_TYPE_P(op1_op->zv) == IS_LONG) {
-			    op1_min = Z_LVAL_P(op1_op->zv);
+			    Z_TYPE_P(RT_CONSTANT(llvm_ctx.op_array, *op1_op)) == IS_LONG) {
+			    op1_min = Z_LVAL_P(RT_CONSTANT(llvm_ctx.op_array, *op1_op));
 			} else if (op1_ssa_var >= 0 &&
 			           JIT_DATA(llvm_ctx.op_array)->ssa_var_info &&
 			           JIT_DATA(llvm_ctx.op_array)->ssa_var_info[op1_ssa_var].has_range) {
@@ -8864,8 +8864,8 @@ static int zend_jit_math(zend_llvm_ctx    &llvm_ctx,
 				op1_min = LONG_MIN;
 			}
 			if (op2_op_type == IS_CONST &&
-			    Z_TYPE_P(op2_op->zv) == IS_LONG) {
-			    op2_min = op2_max = Z_LVAL_P(op2_op->zv);
+			    Z_TYPE_P(RT_CONSTANT(llvm_ctx.op_array, *op2_op)) == IS_LONG) {
+			    op2_min = op2_max = Z_LVAL_P(RT_CONSTANT(llvm_ctx.op_array, *op2_op));
 			} else if (op2_ssa_var >= 0 &&
 			           JIT_DATA(llvm_ctx.op_array)->ssa_var_info &&
 			           JIT_DATA(llvm_ctx.op_array)->ssa_var_info[op2_ssa_var].has_range) {
@@ -9196,11 +9196,11 @@ static int zend_jit_math(zend_llvm_ctx    &llvm_ctx,
 			long op2_max;
 
 			if (op2_op_type == IS_CONST &&
-			    Z_TYPE_P(op2_op->zv) == IS_LONG) {
-			    op2_min = op2_max = Z_LVAL_P(op2_op->zv);
+			    Z_TYPE_P(RT_CONSTANT(llvm_ctx.op_array, *op2_op)) == IS_LONG) {
+			    op2_min = op2_max = Z_LVAL_P(RT_CONSTANT(llvm_ctx.op_array, *op2_op));
 			} else if (op2_op_type == IS_CONST &&
-			    Z_TYPE_P(op2_op->zv) == IS_DOUBLE) {
-				if (Z_DVAL_P(op2_op->zv) == 0.0) {
+			    Z_TYPE_P(RT_CONSTANT(llvm_ctx.op_array, *op2_op)) == IS_DOUBLE) {
+				if (Z_DVAL_P(RT_CONSTANT(llvm_ctx.op_array, *op2_op)) == 0.0) {
 				    op2_min = op2_max = 0;
 				} else {
 				    op2_min = op2_max = 1;
@@ -9418,8 +9418,8 @@ static int zend_jit_long_math(zend_llvm_ctx    &llvm_ctx,
 			long op2_max;
 
 			if (op1_op_type == IS_CONST &&
-			    Z_TYPE_P(op1_op->zv) == IS_LONG) {
-			    op1_min = Z_LVAL_P(op1_op->zv);
+			    Z_TYPE_P(RT_CONSTANT(llvm_ctx.op_array, *op1_op)) == IS_LONG) {
+			    op1_min = Z_LVAL_P(RT_CONSTANT(llvm_ctx.op_array, *op1_op));
 			} else if (op1_ssa_var >= 0 &&
 			           JIT_DATA(llvm_ctx.op_array)->ssa_var_info &&
 			           JIT_DATA(llvm_ctx.op_array)->ssa_var_info[op1_ssa_var].has_range) {
@@ -9428,8 +9428,8 @@ static int zend_jit_long_math(zend_llvm_ctx    &llvm_ctx,
 				op1_min = LONG_MIN;
 			}
 			if (op2_op_type == IS_CONST &&
-			    Z_TYPE_P(op2_op->zv) == IS_LONG) {
-			    op2_min = op2_max = Z_LVAL_P(op2_op->zv);
+			    Z_TYPE_P(RT_CONSTANT(llvm_ctx.op_array, *op2_op)) == IS_LONG) {
+			    op2_min = op2_max = Z_LVAL_P(RT_CONSTANT(llvm_ctx.op_array, *op2_op));
 			} else if (op2_ssa_var >= 0 &&
 			           JIT_DATA(llvm_ctx.op_array)->ssa_var_info &&
 			           JIT_DATA(llvm_ctx.op_array)->ssa_var_info[op2_ssa_var].has_range) {
@@ -9922,7 +9922,7 @@ static int zend_jit_qm_assign(zend_llvm_ctx    &llvm_ctx,
 			zend_jit_copy_value(llvm_ctx, ret, 0, RES_SSA_VAR(), RES_INFO(),
 					op1_addr, op1_type, OP1_OP_TYPE(), OP1_OP(), OP1_SSA_VAR(), OP1_INFO());
 			if (OP1_OP_TYPE() == IS_CONST) {
-				if (UNEXPECTED(Z_COPYABLE_P(OP1_OP()->zv))) {
+				if (UNEXPECTED(Z_COPYABLE_P(RT_CONSTANT(llvm_ctx.op_array, *OP1_OP())))) {
 					zend_jit_copy_ctor_func(llvm_ctx, ret, opline->lineno);
 				}
 			} else if (OP1_OP_TYPE() == IS_CV) {
@@ -10092,7 +10092,7 @@ static int zend_jit_assign_to_variable(zend_llvm_ctx    &llvm_ctx,
 			zend_jit_copy_value(llvm_ctx, op1_addr, op1_info, op1_def_ssa_var, op1_def_info,
 					op2_addr, op2_type_info, op2_type, op2, op2_ssa_var, op2_info);
 			if (op2_type == IS_CONST) {
-				if (UNEXPECTED(Z_COPYABLE_P(op2->zv))) {
+				if (UNEXPECTED(Z_COPYABLE_P(RT_CONSTANT(llvm_ctx.op_array, *op2)))) {
 					// JIT: zval_copy_ctor_func(variable_ptr);
 					zend_jit_copy_ctor_func(llvm_ctx, op1_addr, opline->lineno);
 				}
@@ -10189,7 +10189,7 @@ static int zend_jit_assign_to_variable(zend_llvm_ctx    &llvm_ctx,
 	zend_jit_copy_value(llvm_ctx, op1_addr, op1_info, op1_def_ssa_var, op1_def_info,
 			op2_addr, op2_type_info, op2_type, op2, op2_ssa_var, op2_info);
 	if (op2_type == IS_CONST) {
-		if (UNEXPECTED(Z_COPYABLE_P(op2->zv))) {
+		if (UNEXPECTED(Z_COPYABLE_P(RT_CONSTANT(llvm_ctx.op_array, *op2)))) {
 			//JIT: zval_copy_ctor_func(variable_ptr);
 			zend_jit_copy_ctor_func(llvm_ctx, op1_addr, opline->lineno);
 		}
@@ -10433,9 +10433,9 @@ static int zend_jit_add_string(zend_llvm_ctx    &llvm_ctx,
 		zend_jit_save_zval_type_info(llvm_ctx, result_addr, RES_SSA_VAR(), RES_INFO(), llvm_ctx.builder.getInt32(IS_INTERNED_STRING_EX));
 	}
 	if (opline->opcode == ZEND_ADD_CHAR) {
-		zend_jit_add_char_to_string(llvm_ctx, result_addr, RES_SSA_VAR(), RES_INFO(), result_addr, OP1_SSA_VAR(), OP1_INFO(), (char)Z_LVAL_P(OP2_OP()->zv), opline);
+		zend_jit_add_char_to_string(llvm_ctx, result_addr, RES_SSA_VAR(), RES_INFO(), result_addr, OP1_SSA_VAR(), OP1_INFO(), (char)Z_LVAL_P(RT_CONSTANT(llvm_ctx.op_array, *OP2_OP())), opline);
 	} else if (OP2_OP_TYPE() == IS_CONST) {
-		zend_jit_add_string_to_string(llvm_ctx, result_addr, RES_SSA_VAR(), RES_INFO(), result_addr, OP1_SSA_VAR(), OP1_INFO(), Z_STR_P(OP2_OP()->zv), opline);
+		zend_jit_add_string_to_string(llvm_ctx, result_addr, RES_SSA_VAR(), RES_INFO(), result_addr, OP1_SSA_VAR(), OP1_INFO(), Z_STR_P(RT_CONSTANT(llvm_ctx.op_array, *OP2_OP())), opline);
 	} else {
 		BasicBlock *bb_string = NULL;
 		BasicBlock *bb_copy = NULL;
@@ -11180,7 +11180,7 @@ static int zend_jit_send_val(zend_llvm_ctx    &llvm_ctx,
 	zend_jit_copy_value(llvm_ctx, arg_addr, 0, -1, MAY_BE_ANY,
 		op1_addr, NULL, OP1_OP_TYPE(), OP1_OP(), OP1_SSA_VAR(), OP1_INFO());
 	if (OP1_OP_TYPE() == IS_CONST) {
-		if (UNEXPECTED(Z_OPT_COPYABLE_P(OP1_OP()->zv))) {
+		if (UNEXPECTED(Z_OPT_COPYABLE_P(RT_CONSTANT(llvm_ctx.op_array, *OP1_OP())))) {
 			//JIT: zend_copy_ctor_func(arg) 
 			zend_jit_copy_ctor_func(llvm_ctx, arg_addr, opline->lineno);
 		}
@@ -11986,7 +11986,7 @@ static int zend_jit_strlen(zend_llvm_ctx  &llvm_ctx,
 
 	if (OP1_OP_TYPE() == IS_CONST) {
 		Value *str_len = NULL;
-		zval *value = OP1_OP()->zv;
+		zval *value = RT_CONSTANT(llvm_ctx.op_array, *OP1_OP());
 		if (EXPECTED(Z_TYPE_P(value) == IS_STRING)) {
 			str_len = LLVM_GET_LONG(Z_STRLEN_P(value));
 		} else {
@@ -12748,7 +12748,7 @@ static int zend_jit_assign_obj(zend_llvm_ctx     &llvm_ctx,
 			(OP2_OP_TYPE() == IS_CONST)?
 			zend_jit_cache_slot_addr(
 				llvm_ctx,
-				Z_CACHE_SLOT_P(OP2_OP()->zv),
+				Z_CACHE_SLOT_P(RT_CONSTANT(llvm_ctx.op_array, *OP2_OP())),
 				PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))) : 
 			llvm_ctx.builder.CreateIntToPtr(
 				LLVM_GET_LONG(0),
@@ -12789,8 +12789,8 @@ static int zend_jit_assign_op(zend_llvm_ctx     &llvm_ctx,
 	int same_cvs = 0;
 	uint32_t var_info, var_def_info;
 	int var_ssa_var, var_def_ssa_var;
-	zend_uchar var_op_type;
-	znode_op *var_op;
+	zend_uchar var_op_type = 0;
+	znode_op *var_op = NULL;
 	uint32_t val_info;
 	uint32_t val_ssa_var;
 	zend_uchar val_op_type;
@@ -13206,17 +13206,17 @@ static int zend_jit_isset_isempty_dim_obj(zend_llvm_ctx     &llvm_ctx,
 					zend_jit_load_array(llvm_ctx, container, OP1_SSA_VAR(), OP1_INFO()));
 
 			if (OP2_OP_TYPE() == IS_CONST) {
-				switch (Z_TYPE_P(OP2_OP()->zv)) {
+				switch (Z_TYPE_P(RT_CONSTANT(llvm_ctx.op_array, *OP2_OP()))) {
 					case IS_STRING:
 						str = llvm_ctx.builder.CreateIntToPtr(
-								LLVM_GET_LONG((zend_uintptr_t)Z_STR_P(OP2_OP()->zv)),
+								LLVM_GET_LONG((zend_uintptr_t)Z_STR_P(RT_CONSTANT(llvm_ctx.op_array, *OP2_OP()))),
 								PointerType::getUnqual(llvm_ctx.zend_string_type));
 						break;
 					case IS_LONG:
-						hval = LLVM_GET_LONG(Z_LVAL_P(OP2_OP()->zv));
+						hval = LLVM_GET_LONG(Z_LVAL_P(RT_CONSTANT(llvm_ctx.op_array, *OP2_OP())));
 						break;
 					case IS_DOUBLE:
-						hval = LLVM_GET_LONG(zend_dval_to_lval(Z_DVAL_P(OP2_OP()->zv)));
+						hval = LLVM_GET_LONG(zend_dval_to_lval(Z_DVAL_P(RT_CONSTANT(llvm_ctx.op_array, *OP2_OP()))));
 						break;
 					case IS_NULL:
 						str = llvm_ctx.builder.CreateIntToPtr(
@@ -13813,11 +13813,11 @@ static int zend_jit_isset_isempty_dim_obj(zend_llvm_ctx     &llvm_ctx,
 			}
 
 			if (OP2_OP_TYPE() == IS_CONST) {
-				if (Z_TYPE_P(OP2_OP()->zv) < IS_STRING /* simple scalar types */
-						|| (Z_TYPE_P(OP2_OP()->zv) == IS_STRING /* or numeric string */
+				if (Z_TYPE_P(RT_CONSTANT(llvm_ctx.op_array, *OP2_OP())) < IS_STRING /* simple scalar types */
+						|| (Z_TYPE_P(RT_CONSTANT(llvm_ctx.op_array, *OP2_OP())) == IS_STRING /* or numeric string */
 							&& IS_LONG == is_numeric_string(
-								Z_STRVAL_P(OP2_OP()->zv), Z_STRLEN_P(OP2_OP()->zv), NULL, NULL, 0))) {
-					index = LLVM_GET_LONG(_zval_get_long_func(OP2_OP()->zv));
+								Z_STRVAL_P(RT_CONSTANT(llvm_ctx.op_array, *OP2_OP())), Z_STRLEN_P(RT_CONSTANT(llvm_ctx.op_array, *OP2_OP())), NULL, NULL, 0))) {
+					index = LLVM_GET_LONG(_zval_get_long_func(RT_CONSTANT(llvm_ctx.op_array, *OP2_OP())));
 				} else {
 					if (opline->extended_value & ZEND_ISSET) {
 						PHI_ADD(result, llvm_ctx.builder.getInt32(IS_FALSE));
@@ -14129,7 +14129,7 @@ static int zend_jit_bind_global(zend_llvm_ctx     &llvm_ctx,
 	PHI_DCL(value, 2);
 	PHI_DCL(retval, 4);
 
-	varname = OP2_OP()->zv;
+	varname = RT_CONSTANT(llvm_ctx.op_array, *OP2_OP());
 	//JIT: idx = (uint32_t)(uintptr_t)CACHED_PTR(Z_CACHE_SLOT_P(varname)) - 1;
 	cache_slot_addr = zend_jit_cache_slot_addr(
 			llvm_ctx,
@@ -14674,7 +14674,7 @@ static int zend_jit_init_fcall(zend_llvm_ctx    &llvm_ctx,
 		//JIT: if (CACHED_PTR(Z_CACHE_SLOT_P(fname))) {
 		Value *cache_slot_addr = zend_jit_cache_slot_addr(
 				llvm_ctx,
-				Z_CACHE_SLOT_P(OP2_OP()->zv),
+				Z_CACHE_SLOT_P(RT_CONSTANT(llvm_ctx.op_array, *OP2_OP())),
 				PointerType::getUnqual(llvm_ctx.zend_function_type));
 		func_addr = llvm_ctx.builder.CreateAlignedLoad(cache_slot_addr, 4);
 		PHI_ADD(func_addr, func_addr);
@@ -14688,7 +14688,7 @@ static int zend_jit_init_fcall(zend_llvm_ctx    &llvm_ctx,
 			llvm_ctx.builder.CreateAlignedLoad(
 				llvm_ctx._EG_function_table, 4),
 			llvm_ctx.builder.CreateIntToPtr(
-				LLVM_GET_LONG((zend_uintptr_t)(Z_STR_P(OP2_OP()->zv))),
+				LLVM_GET_LONG((zend_uintptr_t)(Z_STR_P(RT_CONSTANT(llvm_ctx.op_array, *OP2_OP())))),
 				PointerType::getUnqual(llvm_ctx.zend_string_type)));
 
 		if (!func) {
@@ -14710,7 +14710,7 @@ static int zend_jit_init_fcall(zend_llvm_ctx    &llvm_ctx,
 				opline,
 				E_ERROR,
 				"Call to undefined function %s()",
-				LLVM_GET_CONST_STRING(Z_STRVAL_P(OP2_OP()->zv)));
+				LLVM_GET_CONST_STRING(Z_STRVAL_P(RT_CONSTANT(llvm_ctx.op_array, *OP2_OP()))));
 			//JIT: } else {
 			llvm_ctx.builder.SetInsertPoint(bb_found);
 		}
@@ -15654,6 +15654,8 @@ static int zend_jit_init_func_execute_data(zend_llvm_ctx    &llvm_ctx,
 		llvm_ctx.builder.SetInsertPoint(bb_end);
 	}
 
+	//JIT: EX_LOAD_RUN_TIME_CACHE(op_array);
+#if ZEND_EX_USE_RUN_TIME_CACHE
 	if (func && !func->op_array.last_cache_slot) {
 	    Value *cache = llvm_ctx.builder.CreateAlignedStore(
     		LLVM_GET_LONG(0),
@@ -15744,6 +15746,34 @@ static int zend_jit_init_func_execute_data(zend_llvm_ctx    &llvm_ctx,
 				offsetof(zend_execute_data, run_time_cache),
 				PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))), 4);
 	}
+#endif
+
+	//JIT: EX_LOAD_LITERALS(op_array);
+#if ZEND_EX_USE_LITERALS
+	if (func && !func->op_array.last_literal) {
+		llvm_ctx.builder.CreateAlignedStore(
+    		LLVM_GET_LONG(0),
+			zend_jit_GEP(
+				llvm_ctx,
+				execute_data,
+				offsetof(zend_execute_data, literals),
+				PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))), 4);
+    } else {
+		Value *literals = llvm_ctx.builder.CreateAlignedLoad(
+				zend_jit_GEP(
+					llvm_ctx,
+					func_addr,
+					offsetof(zend_function, op_array.literals),
+					PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))), 4);
+		llvm_ctx.builder.CreateAlignedStore(
+    		literals,
+			zend_jit_GEP(
+				llvm_ctx,
+				execute_data,
+				offsetof(zend_execute_data, literals),
+				PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context))), 4);
+	}
+#endif
 
 	//JIT: EG(current_execute_data) = execute_data;
 	llvm_ctx.builder.CreateAlignedStore(
@@ -17097,7 +17127,7 @@ static int zend_jit_return(zend_llvm_ctx    &llvm_ctx,
 		zend_jit_copy_value(llvm_ctx, return_value, 0, -1, MAY_BE_ANY,
 				retval, NULL, OP1_OP_TYPE(), OP1_OP(), OP1_SSA_VAR(), OP1_INFO());
 		if (OP1_OP_TYPE() == IS_CONST) {
-			if (Z_OPT_COPYABLE_P(OP1_OP()->zv)) {
+			if (Z_OPT_COPYABLE_P(RT_CONSTANT(llvm_ctx.op_array, *OP1_OP()))) {
 				//JIT: zval_copy_ctor_func(EX(return_value));
 				zend_jit_copy_ctor_func(llvm_ctx, return_value, opline->lineno);
 			}
@@ -17189,19 +17219,19 @@ static int zend_jit_recv(zend_llvm_ctx    &llvm_ctx,
 		//JIT: ZVAL_COPY_VALUE(param, OP2_OP()->zv);
 		zend_jit_copy_value(llvm_ctx, param, 0, -1, MAY_BE_ANY,
 			llvm_ctx.builder.CreateIntToPtr(
-				LLVM_GET_LONG((zend_uintptr_t)OP2_OP()->zv),
+				LLVM_GET_LONG((zend_uintptr_t)RT_CONSTANT(llvm_ctx.op_array, *OP2_OP())),
 				llvm_ctx.zval_ptr_type),
 			NULL,
 			OP2_OP_TYPE(),
 			OP2_OP(),
 			OP2_SSA_VAR(),
 			OP2_INFO());
-		if (Z_OPT_CONSTANT_P(OP2_OP()->zv)) {
+		if (Z_OPT_CONSTANT_P(RT_CONSTANT(llvm_ctx.op_array, *OP2_OP()))) {
 			//JIT: zval_update_constant(param, 0 TSRMLS_CC);
 			zend_jit_update_constant(llvm_ctx, param, 0);
 		} else {
 			/* IS_CONST can't be IS_OBJECT, IS_RESOURCE or IS_REFERENCE */
-			if (Z_OPT_COPYABLE_P(OP2_OP()->zv)) {
+			if (Z_OPT_COPYABLE_P(RT_CONSTANT(llvm_ctx.op_array, *OP2_OP()))) {
 				//JIT: zval_copy_ctor_func(param);
 				zend_jit_copy_ctor_func(llvm_ctx, param, opline->lineno);
 			}
@@ -17241,7 +17271,7 @@ static int zend_jit_recv(zend_llvm_ctx    &llvm_ctx,
 						llvm_ctx.builder.getInt32(arg_num + 1),
 						param,
 						llvm_ctx.builder.CreateIntToPtr(
-							LLVM_GET_LONG((zend_uintptr_t)opline->op2.zv),
+							LLVM_GET_LONG((zend_uintptr_t)RT_CONSTANT(llvm_ctx.op_array, opline->op2)),
 							llvm_ctx.zval_ptr_type));
 				} else {
 					zend_jit_check_type_hint(
@@ -17291,12 +17321,12 @@ static int zend_jit_echo(zend_llvm_ctx    &llvm_ctx,
                          zend_op_array    *op_array,
                          zend_op          *opline)
 {
-	if (opline->op1_type == IS_CONST && Z_TYPE_P(opline->op1.zv) == IS_STRING) {
-		if (Z_STRLEN_P(opline->op1.zv) > 0) {
+	if (opline->op1_type == IS_CONST && Z_TYPE_P(RT_CONSTANT(llvm_ctx.op_array, opline->op1)) == IS_STRING) {
+		if (Z_STRLEN_P(RT_CONSTANT(llvm_ctx.op_array, opline->op1)) > 0) {
 			//JIT: zend_write(Z_STRVAL_P(z), Z_STRLEN_P(z));
 			zend_jit_write(llvm_ctx,
-				LLVM_GET_CONST_STRING(Z_STRVAL_P(opline->op1.zv)),
-				LLVM_GET_LONG(Z_STRLEN_P(opline->op1.zv)));
+				LLVM_GET_CONST_STRING(Z_STRVAL_P(RT_CONSTANT(llvm_ctx.op_array, opline->op1))),
+				LLVM_GET_LONG(Z_STRLEN_P(RT_CONSTANT(llvm_ctx.op_array, opline->op1))));
 				
 		}
 	} else {
@@ -17868,7 +17898,7 @@ static int zend_jit_codegen_ex(zend_jit_context *ctx,
 					llvm_ctx.valid_opline = 0;
 					break;
 				case ZEND_JMP:
-					llvm_ctx.builder.CreateBr(TARGET_BB(OP1_OP()->jmp_addr - op_array->opcodes));
+					llvm_ctx.builder.CreateBr(TARGET_BB(OP_JMP_ADDR(opline, *OP1_OP()) - op_array->opcodes));
 					llvm_ctx.valid_opline = 0;
 					break;
 				case ZEND_JMPZ:
@@ -17876,7 +17906,7 @@ static int zend_jit_codegen_ex(zend_jit_context *ctx,
 							llvm_ctx,
 							op_array,
 							opline,
-							TARGET_BB(OP2_OP()->jmp_addr - op_array->opcodes),
+							TARGET_BB(OP_JMP_ADDR(opline, *OP2_OP()) - op_array->opcodes),
 							TARGET_BB(block[b + 1].start),
 							1)) return 0;
 					llvm_ctx.valid_opline = 0;
@@ -17887,7 +17917,7 @@ static int zend_jit_codegen_ex(zend_jit_context *ctx,
 							op_array,
 							opline,
 							TARGET_BB(block[b + 1].start),
-							TARGET_BB(OP2_OP()->jmp_addr - op_array->opcodes),
+							TARGET_BB(OP_JMP_ADDR(opline, *OP2_OP()) - op_array->opcodes),
 							0)) return 0;
 					llvm_ctx.valid_opline = 0;
 					break;
@@ -17896,8 +17926,8 @@ static int zend_jit_codegen_ex(zend_jit_context *ctx,
 							llvm_ctx,
 							op_array,
 							opline,
-							TARGET_BB(OP2_OP()->jmp_addr - op_array->opcodes),
-							TARGET_BB((zend_op*)(((char*)opline) + opline->extended_value) - op_array->opcodes),
+							TARGET_BB(OP_JMP_ADDR(opline, *OP2_OP()) - op_array->opcodes),
+							TARGET_BB((zend_op*)(((char*)opline) + (int)opline->extended_value) - op_array->opcodes),
 							-1)) return 0;
 					llvm_ctx.valid_opline = 0;
 					break;
@@ -17953,7 +17983,7 @@ static int zend_jit_codegen_ex(zend_jit_context *ctx,
 					    (opline+1)->op1_type == IS_TMP_VAR &&
 					    (opline+1)->op1.var == RES_OP()->var) {
 						if (!zend_jit_cmp(llvm_ctx, op_array, opline,
-							TARGET_BB((opline+1)->op2.jmp_addr - op_array->opcodes),
+							TARGET_BB(OP_JMP_ADDR(opline+1, (opline+1)->op2) - op_array->opcodes),
 							TARGET_BB(block[b + 1].start),
 							1)) return 0;
 						i++;
@@ -17963,7 +17993,7 @@ static int zend_jit_codegen_ex(zend_jit_context *ctx,
 					    (opline+1)->op1.var == RES_OP()->var) {
 						if (!zend_jit_cmp(llvm_ctx, op_array, opline,
 							TARGET_BB(block[b + 1].start),
-							TARGET_BB((opline+1)->op2.jmp_addr - op_array->opcodes),
+							TARGET_BB(OP_JMP_ADDR(opline+1, (opline+1)->op2) - op_array->opcodes),
 							0)) return 0;
 						i++;
 					} else if ((opline+1)->opcode == ZEND_JMPZNZ &&
@@ -17971,8 +18001,8 @@ static int zend_jit_codegen_ex(zend_jit_context *ctx,
 					    (opline+1)->op1_type == IS_TMP_VAR &&
 					    (opline+1)->op1.var == RES_OP()->var) {
 						if (!zend_jit_cmp(llvm_ctx, op_array, opline,
-							TARGET_BB((opline+1)->op2.jmp_addr - op_array->opcodes),
-							TARGET_BB((zend_op*)(((char*)(opline+1)) + (opline+1)->extended_value) - op_array->opcodes),
+							TARGET_BB(OP_JMP_ADDR(opline+1, (opline+1)->op2) - op_array->opcodes),
+							TARGET_BB((zend_op*)(((char*)(opline+1)) + (int)(opline+1)->extended_value) - op_array->opcodes),
 							-1)) return 0;
 						i++;
 					} else {
@@ -18132,16 +18162,16 @@ static int zend_jit_codegen_ex(zend_jit_context *ctx,
 #endif
 				case ZEND_GOTO:
 					if (!zend_jit_handler(llvm_ctx, opline)) return 0;
-					llvm_ctx.builder.CreateBr(TARGET_BB(OP1_OP()->jmp_addr - op_array->opcodes));
+					llvm_ctx.builder.CreateBr(TARGET_BB(OP_JMP_ADDR(opline, *OP1_OP()) - op_array->opcodes));
 					break;
 				case ZEND_BRK:
 				case ZEND_CONT:
 					if (!zend_jit_handler(llvm_ctx, opline)) return 0;
 					if (OP2_OP_TYPE() == IS_CONST &&
-					    Z_TYPE_P(OP2_OP()->zv) == IS_LONG &&
+					    Z_TYPE_P(RT_CONSTANT(llvm_ctx.op_array, *OP2_OP())) == IS_LONG &&
 					    (int)OP1_OP()->num >= 0) {
 						int array_offset = OP1_OP()->num;
-						int nest_levels = Z_LVAL_P(OP2_OP()->zv);
+						int nest_levels = Z_LVAL_P(RT_CONSTANT(llvm_ctx.op_array, *OP2_OP()));
 						zend_brk_cont_element *jmp_to;
 
 						do {
@@ -18181,11 +18211,11 @@ static int zend_jit_codegen_ex(zend_jit_context *ctx,
 				case ZEND_COALESCE:
 				case ZEND_FE_RESET:
 					if (!zend_jit_handler(llvm_ctx, opline)) return 0;
-					if (!zend_jit_cond_jmp(llvm_ctx, opline, OP2_OP()->jmp_addr, TARGET_BB(OP2_OP()->jmp_addr - op_array->opcodes), TARGET_BB(block[b + 1].start))) return 0;
+					if (!zend_jit_cond_jmp(llvm_ctx, opline, OP_JMP_ADDR(opline, *OP2_OP()), TARGET_BB(OP_JMP_ADDR(opline, *OP2_OP()) - op_array->opcodes), TARGET_BB(block[b + 1].start))) return 0;
 					break;
 				case ZEND_FE_FETCH:
 					if (!zend_jit_handler(llvm_ctx, opline)) return 0;
-					if (!zend_jit_cond_jmp(llvm_ctx, opline, OP2_OP()->jmp_addr, TARGET_BB(OP2_OP()->jmp_addr - op_array->opcodes), TARGET_BB(block[b + 1].start))) return 0;
+					if (!zend_jit_cond_jmp(llvm_ctx, opline, OP_JMP_ADDR(opline, *OP2_OP()), TARGET_BB(OP_JMP_ADDR(opline, *OP2_OP()) - op_array->opcodes), TARGET_BB(block[b + 1].start))) return 0;
 					break;
 				case ZEND_THROW:
 					if (!zend_jit_store_opline(llvm_ctx, opline)) return 0;

@@ -1228,7 +1228,7 @@ uint32_t zend_jit_get_func_info(const zend_jit_call_info *call_info)
 	if (call_info->callee_func->type == ZEND_INTERNAL_FUNCTION) {
 		func_info_t *info;
 
-		if ((info = zend_hash_find_ptr(&func_info, Z_STR_P(call_info->caller_init_opline->op2.zv))) != NULL) {
+		if ((info = zend_hash_find_ptr(&func_info, Z_STR_P(RT_CONSTANT(call_info->caller_op_array, call_info->caller_init_opline->op2)))) != NULL) {
 			if (info->info_func) {
 				ret = info->info_func(call_info);
 			} else {
