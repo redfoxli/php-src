@@ -11167,14 +11167,6 @@ static int zend_jit_send_val(zend_llvm_ctx    &llvm_ctx,
 						call,
 						sizeof(zval) * (OP2_OP()->num + ZEND_CALL_FRAME_SLOT - 1),
 						llvm_ctx.zval_ptr_type);
-	//JIT: ZEND_CALL_NUM(call) = OP2_OP()->num;
-	llvm_ctx.builder.CreateAlignedStore(
-					llvm_ctx.builder.getInt32(OP2_OP()->num),
-					zend_jit_GEP(
-						llvm_ctx,
-						call,
-						offsetof(zend_execute_data, This.u2.num_args),
-						PointerType::getUnqual(Type::getInt32Ty(llvm_ctx.context))), 4);
 
 	//JIT: ZVAL_COPY_VALUE(arg, value);
 	zend_jit_copy_value(llvm_ctx, arg_addr, 0, -1, MAY_BE_ANY,
@@ -11286,14 +11278,6 @@ static int zend_jit_send_ref(zend_llvm_ctx    &llvm_ctx,
 						call,
 						sizeof(zval) * (OP2_OP()->num + ZEND_CALL_FRAME_SLOT - 1),
 						llvm_ctx.zval_ptr_type);
-	//JIT: ZEND_CALL_NUM_ARGS(call) = opline->op2.num;
-	llvm_ctx.builder.CreateAlignedStore(
-					llvm_ctx.builder.getInt32(OP2_OP()->num),
-					zend_jit_GEP(
-						llvm_ctx,
-						call,
-						offsetof(zend_execute_data, This.u2.num_args),
-						PointerType::getUnqual(Type::getInt32Ty(llvm_ctx.context))), 4);
 
 	if (opline->op1_type == IS_VAR && OP1_MAY_BE(MAY_BE_ERROR)) {
 		BasicBlock *bb_error = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
@@ -11454,14 +11438,6 @@ static int zend_jit_send_var(zend_llvm_ctx    &llvm_ctx,
 						call,
 						sizeof(zval) * (OP2_OP()->num + ZEND_CALL_FRAME_SLOT - 1),
 						llvm_ctx.zval_ptr_type);
-	//JIT: ZEND_CALL_NUM_ARGS(call) = OP2_OP()->num;
-	llvm_ctx.builder.CreateAlignedStore(
-					llvm_ctx.builder.getInt32(OP2_OP()->num),
-					zend_jit_GEP(
-						llvm_ctx,
-						call,
-						offsetof(zend_execute_data, This.u2.num_args),
-						PointerType::getUnqual(Type::getInt32Ty(llvm_ctx.context))), 4);
 
 	Value *op1_type_info = NULL;
 	if (OP1_MAY_BE(MAY_BE_REF)) {
@@ -11641,14 +11617,7 @@ static int zend_jit_send_var_no_ref(zend_llvm_ctx    &llvm_ctx,
 			call,
 			sizeof(zval) * (OP2_OP()->num + ZEND_CALL_FRAME_SLOT - 1),
 			llvm_ctx.zval_ptr_type);
-	//JIT: ZEND_CALL_NUM_ARGS(call) = opline->op2.num;
-	llvm_ctx.builder.CreateAlignedStore(
-			llvm_ctx.builder.getInt32(OP2_OP()->num),
-			zend_jit_GEP(
-				llvm_ctx,
-				call,
-				offsetof(zend_execute_data, This.u2.num_args),
-				PointerType::getUnqual(Type::getInt32Ty(llvm_ctx.context))), 4);
+
 	//JIT: ZVAL_COPY_VALUE(arg, varptr);
 	zend_jit_copy_value(llvm_ctx, arg_addr, 0, -1, MAY_BE_ANY,
 		op1_addr, /*???op1_type_info*/NULL, OP1_OP_TYPE(), OP1_OP(),
@@ -14468,6 +14437,7 @@ static Value* zend_jit_vm_stack_alloc(zend_llvm_ctx    &llvm_ctx,
 /* {{{ static int zend_jit_vm_stack_push_call_frame_ex */
 static Value* zend_jit_vm_stack_push_call_frame_ex(zend_llvm_ctx    &llvm_ctx,
                                                    zend_function    *func,
+                                                   uint32_t          num_args,
                                                    Value            *used_stack,
                                                    Value            *func_addr,
                                                    uint32_t          lineno)
@@ -14500,9 +14470,9 @@ static Value* zend_jit_vm_stack_push_call_frame_ex(zend_llvm_ctx    &llvm_ctx,
 			call,
 			offsetof(zend_execute_data, This.u1.type_info),
 			PointerType::getUnqual(Type::getInt32Ty(llvm_ctx.context))), 4);
-	//JIT: ZEND_CALL_NUM_ARGS(call) = 0;
+	//JIT: ZEND_CALL_NUM_ARGS(call) = num_args;
 	llvm_ctx.builder.CreateAlignedStore(
-		llvm_ctx.builder.getInt32(0),
+		llvm_ctx.builder.getInt32(num_args),
 		zend_jit_GEP(
 			llvm_ctx,
 			call,
@@ -14628,7 +14598,7 @@ static Value* zend_jit_vm_stack_push_call_frame(zend_llvm_ctx    &llvm_ctx,
 		PHI_SET(used_stack_val, used_stack_val, LLVM_GET_LONG_TY(llvm_ctx.context));
 	}
 
-	return zend_jit_vm_stack_push_call_frame_ex(llvm_ctx, func,
+	return zend_jit_vm_stack_push_call_frame_ex(llvm_ctx, func, num_args,
 		llvm_ctx.builder.CreateMul(
 			used_stack_val,
 			LLVM_GET_LONG(sizeof(zval))),
@@ -14737,6 +14707,7 @@ static int zend_jit_init_fcall(zend_llvm_ctx    &llvm_ctx,
 	llvm_ctx.builder.CreateAlignedStore(
 		zend_jit_vm_stack_push_call_frame_ex(llvm_ctx,
 			func,
+			opline->extended_value,
 			LLVM_GET_LONG(opline->op1.num),
 			func_addr,
 			opline->lineno),
