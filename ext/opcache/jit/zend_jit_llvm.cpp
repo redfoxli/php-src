@@ -19039,21 +19039,42 @@ int zend_jit_codegen_startup(size_t size)
 	/* TODO: It has to be shared memory */
 	zend_uchar *p = (zend_uchar*)VirtualAlloc(0, size,
 		MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+	if (!p) {
+		return FAILURE;
+	}
 #else
 	int shared = 1;
+	zend_uchar *p;
 
 	if (ZCG(accel_directives).jit_debug & JIT_DEBUG_OPROFILE) {
 		// We have to use private (not shared) memory segment to make
 		// OProfile recgnize it
 		shared = 0;
 	}
-	zend_uchar *p = (zend_uchar*)mmap(NULL, size,
-		PROT_EXEC | PROT_READ | PROT_WRITE,
-		(shared ? MAP_SHARED : MAP_PRIVATE) | MAP_ANONYMOUS, -1, 0);
+	do {
+
+# ifdef MAP_HUGETLB
+		/* Try to allocate huge pages first to reduce dTLB misses.
+		 * OS has to be configured properly
+		 * (e.g. https://wiki.debian.org/Hugepages#Enabling_HugeTlbPage)
+		 * You may verify huge page usage with the following command:
+		 * `grep "Huge" /proc/meminfo`
+		 */
+		p = (zend_uchar*)mmap(NULL, size,
+			PROT_EXEC | PROT_READ | PROT_WRITE,
+			(shared ? MAP_SHARED : MAP_PRIVATE) | MAP_ANONYMOUS | MAP_HUGETLB, -1, 0);
+		if (p != MAP_FAILED) {
+			break;
+		}
+# endif
+		zend_uchar *p = (zend_uchar*)mmap(NULL, size,
+			PROT_EXEC | PROT_READ | PROT_WRITE,
+			(shared ? MAP_SHARED : MAP_PRIVATE) | MAP_ANONYMOUS, -1, 0);
+		if (p == MAP_FAILED) {
+			return FAILURE;
+		}
+	} while (0);
 #endif
-	if (!p) {
-		return FAILURE;
-	}
 	asm_buf = (zend_asm_buf*)p;
 	asm_buf->base = asm_buf->ptr = p + sizeof(zend_asm_buf);
 	asm_buf->end = p + size;
