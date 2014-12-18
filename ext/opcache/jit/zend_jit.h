@@ -21,7 +21,7 @@
 #ifndef HAVE_JIT_H
 #define HAVE_JIT_H
 
-int  zend_jit(zend_persistent_script *script TSRMLS_DC);
+int  zend_jit(zend_persistent_script *script);
 int  zend_jit_startup(size_t size);
 void zend_jit_shutdown(void);
 

@@ -54,19 +54,19 @@ static zend_jit_context *zend_jit_context_create(zend_persistent_script* main_pe
 	return ctx;
 }
 
-static zend_jit_context *zend_jit_start_script(zend_persistent_script* main_persistent_script TSRMLS_DC)
+static zend_jit_context *zend_jit_start_script(zend_persistent_script* main_persistent_script)
 {
 	return zend_jit_context_create(main_persistent_script,
 			 sizeof(void*) * 4 * 1024 * 1024);
 }
 
-static int zend_jit_end_script(zend_jit_context *ctx TSRMLS_DC)
+static int zend_jit_end_script(zend_jit_context *ctx)
 {
 	zend_arena_destroy(ctx->arena);
 	return SUCCESS;
 }
 
-static int zend_jit_op_array_calc(zend_jit_context *ctx, zend_op_array *op_array TSRMLS_DC)
+static int zend_jit_op_array_calc(zend_jit_context *ctx, zend_op_array *op_array)
 {
 	(void) op_array;
 
@@ -74,7 +74,7 @@ static int zend_jit_op_array_calc(zend_jit_context *ctx, zend_op_array *op_array
 	return SUCCESS;
 }
 
-static int zend_jit_op_array_collect(zend_jit_context *ctx, zend_op_array *op_array TSRMLS_DC)
+static int zend_jit_op_array_collect(zend_jit_context *ctx, zend_op_array *op_array)
 {
     zend_jit_func_info *info = zend_jit_context_calloc(ctx, sizeof(zend_jit_func_info), 1);
 
@@ -89,7 +89,7 @@ static int zend_jit_op_array_collect(zend_jit_context *ctx, zend_op_array *op_ar
 	return SUCCESS;
 }
 
-static int zend_jit_op_array_analyze_cfg(zend_jit_context *ctx, zend_op_array *op_array TSRMLS_DC)
+static int zend_jit_op_array_analyze_cfg(zend_jit_context *ctx, zend_op_array *op_array)
 {
     zend_jit_func_info *info = JIT_DATA(op_array);
 
@@ -102,7 +102,7 @@ static int zend_jit_op_array_analyze_cfg(zend_jit_context *ctx, zend_op_array *o
 		return FAILURE;
 	}
 
-	if (zend_jit_build_cfg(ctx, op_array TSRMLS_CC) != SUCCESS) {
+	if (zend_jit_build_cfg(ctx, op_array) != SUCCESS) {
 		return FAILURE;
 	}
 
@@ -174,7 +174,7 @@ static void zend_jit_collect_args_info(zend_jit_call_info *call_info)
 	}
 }
 
-static int zend_jit_op_array_analyze_calls(zend_jit_context *ctx, zend_op_array *op_array TSRMLS_DC)
+static int zend_jit_op_array_analyze_calls(zend_jit_context *ctx, zend_op_array *op_array)
 {
     zend_jit_func_info *info = JIT_DATA(op_array);
 
@@ -297,16 +297,16 @@ static void zend_jit_analyze_recursion(zend_jit_context *ctx)
 	}	
 }
 
-static int zend_jit_op_array_analyze_ssa(zend_jit_context *ctx, zend_op_array *op_array TSRMLS_DC)
+static int zend_jit_op_array_analyze_ssa(zend_jit_context *ctx, zend_op_array *op_array)
 {
     zend_jit_func_info *info = JIT_DATA(op_array);
 	
 	if (info && info->block) {
 		if ((info->flags & ZEND_JIT_FUNC_TOO_DYNAMIC) == 0) {
-			if (zend_jit_parse_ssa(ctx, op_array TSRMLS_CC) != SUCCESS) {
+			if (zend_jit_parse_ssa(ctx, op_array) != SUCCESS) {
 				return FAILURE;
 			}
-			if (zend_jit_optimize_ssa(ctx, op_array TSRMLS_CC) != SUCCESS) {
+			if (zend_jit_optimize_ssa(ctx, op_array) != SUCCESS) {
 				return FAILURE;
 			}
 		}
@@ -314,19 +314,19 @@ static int zend_jit_op_array_analyze_ssa(zend_jit_context *ctx, zend_op_array *o
 	return SUCCESS;
 }
 
-typedef int (*zend_jit_op_array_func_t)(zend_jit_context *ctx, zend_op_array *op_array TSRMLS_DC);
+typedef int (*zend_jit_op_array_func_t)(zend_jit_context *ctx, zend_op_array *op_array);
 
-static int zend_jit_foreach_op_array(zend_jit_context *ctx, zend_persistent_script *script, zend_jit_op_array_func_t func TSRMLS_DC)
+static int zend_jit_foreach_op_array(zend_jit_context *ctx, zend_persistent_script *script, zend_jit_op_array_func_t func)
 {
 	zend_class_entry *ce;
 	zend_op_array *op_array;
 
-	if (func(ctx, &script->main_op_array TSRMLS_CC) != SUCCESS) {
+	if (func(ctx, &script->main_op_array) != SUCCESS) {
 		return FAILURE;
 	}
 
 	ZEND_HASH_FOREACH_PTR(&script->function_table, op_array) {
-		if (func(ctx, op_array TSRMLS_CC) != SUCCESS) {
+		if (func(ctx, op_array) != SUCCESS) {
 			return FAILURE;
 		}
 	} ZEND_HASH_FOREACH_END();
@@ -334,7 +334,7 @@ static int zend_jit_foreach_op_array(zend_jit_context *ctx, zend_persistent_scri
 	ZEND_HASH_FOREACH_PTR(&script->class_table, ce) {
 		ZEND_HASH_FOREACH_PTR(&ce->function_table, op_array) {
 			if (op_array->scope == ce) {
-				if (func(ctx, op_array TSRMLS_CC) != SUCCESS) {
+				if (func(ctx, op_array) != SUCCESS) {
 					return FAILURE;
 				}
 			}
@@ -352,22 +352,22 @@ static void zend_jit_sort_op_arrays(zend_jit_context *ctx)
 }
 
 #if HAVE_VALGRIND
-static int zend_jit_int(zend_persistent_script *script TSRMLS_DC)
+static int zend_jit_int(zend_persistent_script *script)
 #else
-int zend_jit(zend_persistent_script *script TSRMLS_DC)
+int zend_jit(zend_persistent_script *script)
 #endif
 {
 	int i;
 	zend_jit_func_info *info;
 	zend_jit_context *ctx;
 	
-	ctx = zend_jit_start_script(script TSRMLS_CC);
+	ctx = zend_jit_start_script(script);
 	if (!ctx) {
 		return FAILURE;
 	}
 
 	ctx->op_arrays_count = 0;
-	if (zend_jit_foreach_op_array(ctx, script, zend_jit_op_array_calc TSRMLS_CC) != SUCCESS) {
+	if (zend_jit_foreach_op_array(ctx, script, zend_jit_op_array_calc) != SUCCESS) {
 		return FAILURE;
 	}
 	ctx->op_arrays = (zend_op_array**)zend_jit_context_calloc(ctx, sizeof(zend_op_array*), ctx->op_arrays_count);
@@ -375,39 +375,39 @@ int zend_jit(zend_persistent_script *script TSRMLS_DC)
 		return FAILURE;
 	}
 	ctx->op_arrays_count = 0;
-	if (zend_jit_foreach_op_array(ctx, script, zend_jit_op_array_collect TSRMLS_CC) != SUCCESS) {
+	if (zend_jit_foreach_op_array(ctx, script, zend_jit_op_array_collect) != SUCCESS) {
 		return FAILURE;
 	}
 
 	/* Disable profiling for JIT-ed scripts */
 //???	if (ZCG(accel_directives).jit_profile) {
 //???		for (i = 0; i < ctx->op_arrays_count; i++) {
-//???			zend_jit_profile_reset(ctx->op_arrays[i] TSRMLS_CC);
+//???			zend_jit_profile_reset(ctx->op_arrays[i]);
 //???		}
 //???	}
 
 	/* Analyses */
 	for (i = 0; i < ctx->op_arrays_count; i++) {
-		zend_jit_op_array_analyze_cfg(ctx, ctx->op_arrays[i] TSRMLS_CC);
+		zend_jit_op_array_analyze_cfg(ctx, ctx->op_arrays[i]);
 	}
 	for (i = 0; i < ctx->op_arrays_count; i++) {
-		zend_jit_op_array_analyze_calls(ctx, ctx->op_arrays[i] TSRMLS_CC);
+		zend_jit_op_array_analyze_calls(ctx, ctx->op_arrays[i]);
 	}
-	zend_jit_analyze_recursion(ctx TSRMLS_CC);
+	zend_jit_analyze_recursion(ctx);
 	zend_jit_sort_op_arrays(ctx);
 	for (i = 0; i < ctx->op_arrays_count; i++) {
-		zend_jit_op_array_analyze_ssa(ctx, ctx->op_arrays[i] TSRMLS_CC);
+		zend_jit_op_array_analyze_ssa(ctx, ctx->op_arrays[i]);
 	}
 //???	zend_jit_optimize_calls(ctx);
 	for (i = 0; i < ctx->op_arrays_count; i++) {
 		info = JIT_DATA(ctx->op_arrays[i]);
-		zend_jit_optimize_vars(ctx, ctx->op_arrays[i] TSRMLS_CC);
+		zend_jit_optimize_vars(ctx, ctx->op_arrays[i]);
 		/* optimize clones */
 		if (info->clone) {
 			zend_jit_func_info *clone = info->clone;
 			do {
 				JIT_DATA_SET(ctx->op_arrays[i], clone);
-//???				zend_jit_optimize_vars(ctx, ctx->op_arrays[i] TSRMLS_CC);
+//???				zend_jit_optimize_vars(ctx, ctx->op_arrays[i]);
 				clone = clone->clone;
 			} while (clone);
 			JIT_DATA_SET(ctx->op_arrays[i], info);
@@ -447,8 +447,8 @@ int zend_jit(zend_persistent_script *script TSRMLS_DC)
 	}
 
 	/* Code Generation */
-	if (zend_jit_codegen_start_script(ctx TSRMLS_DC) != SUCCESS) {
-		zend_jit_end_script(ctx TSRMLS_CC);
+	if (zend_jit_codegen_start_script(ctx) != SUCCESS) {
+		zend_jit_end_script(ctx);
 		return FAILURE;
 	}
 
@@ -468,7 +468,7 @@ int zend_jit(zend_persistent_script *script TSRMLS_DC)
 	for (i = 0; i < ctx->op_arrays_count; i++) {
 		info = JIT_DATA(ctx->op_arrays[i]);
 		if (info && info->block && (info->flags & ZEND_JIT_FUNC_MAY_COMPILE)) {
-			zend_jit_codegen(ctx, ctx->op_arrays[i] TSRMLS_CC);
+			zend_jit_codegen(ctx, ctx->op_arrays[i]);
 //			num_compiled_funcs++;
 			/* compile clones */
 			if (info->clone) {
@@ -476,7 +476,7 @@ int zend_jit(zend_persistent_script *script TSRMLS_DC)
 				do {
 					if (!(clone->flags & ZEND_JIT_FUNC_INLINE)) {
 						JIT_DATA_SET(ctx->op_arrays[i], clone);
-						zend_jit_codegen(ctx, ctx->op_arrays[i] TSRMLS_CC);
+						zend_jit_codegen(ctx, ctx->op_arrays[i]);
 					}
 					clone = clone->clone;
 				} while (clone);
@@ -488,11 +488,11 @@ int zend_jit(zend_persistent_script *script TSRMLS_DC)
 //	fprintf(stderr, "%s: compiled functions: %d\n", script->full_path, num_compiled_funcs);
 	
 	if (zend_jit_codegen_end_script(ctx) != SUCCESS) {
-		zend_jit_end_script(ctx TSRMLS_CC);
+		zend_jit_end_script(ctx);
 		return FAILURE;
 	}
 
-	if (zend_jit_end_script(ctx TSRMLS_CC) != SUCCESS) {
+	if (zend_jit_end_script(ctx) != SUCCESS) {
 		return FAILURE;
 	}
 
@@ -500,14 +500,14 @@ int zend_jit(zend_persistent_script *script TSRMLS_DC)
 }
 
 #if HAVE_VALGRIND
-int zend_jit(zend_persistent_script *script TSRMLS_DC)
+int zend_jit(zend_persistent_script *script)
 {
 	int ret;
 
 	if (!(ZCG(accel_directives).jit_debug & JIT_DEBUG_VALGRIND)) {
 		CALLGRIND_STOP_INSTRUMENTATION;
 	}
-	ret = zend_jit_int(script TSRMLS_CC);
+	ret = zend_jit_int(script);
 	if (!(ZCG(accel_directives).jit_debug & JIT_DEBUG_VALGRIND)) {
 		CALLGRIND_START_INSTRUMENTATION;
 	}

@@ -32,10 +32,10 @@
 extern "C" {
 #endif
 
-int zend_jit_codegen_may_compile(zend_op_array *op_array TSRMLS_DC) ZEND_HIDDEN;
-int zend_jit_codegen_start_script(zend_jit_context *ctx TSRMLS_DC) ZEND_HIDDEN;
-int zend_jit_codegen_end_script(zend_jit_context *ctx TSRMLS_DC) ZEND_HIDDEN;
-int zend_jit_codegen(zend_jit_context *ctx, zend_op_array *op_array TSRMLS_DC) ZEND_HIDDEN;
+int zend_jit_codegen_may_compile(zend_op_array *op_array) ZEND_HIDDEN;
+int zend_jit_codegen_start_script(zend_jit_context *ctx) ZEND_HIDDEN;
+int zend_jit_codegen_end_script(zend_jit_context *ctx) ZEND_HIDDEN;
+int zend_jit_codegen(zend_jit_context *ctx, zend_op_array *op_array) ZEND_HIDDEN;
 int zend_jit_codegen_startup(size_t size) ZEND_HIDDEN;
 int zend_jit_codegen_shutdown(void) ZEND_HIDDEN;
 
