@@ -2020,10 +2020,6 @@ static int zend_jit_calc_range(zend_jit_context *ctx, zend_op_array *op_array, i
 			break;
 //		case ZEND_ASSIGN_BW_XOR:
 //		case ZEND_ASSIGN_CONCAT:
-		case ZEND_PRINT:
-			tmp->min = 1;
-			tmp->max = 1;
-			return 1;
 		case ZEND_OP_DATA:
 			if ((opline-1)->opcode == ZEND_ASSIGN_DIM ||
 			    (opline-1)->opcode == ZEND_ASSIGN_OBJ ||
@@ -2903,7 +2899,6 @@ static void zend_jit_update_type_info(zend_jit_context *ctx,
 			break;
 		case ZEND_SL:
 		case ZEND_SR:
-		case ZEND_PRINT:
 		case ZEND_BEGIN_SILENCE:
 			UPDATE_SSA_TYPE(MAY_BE_DEF|MAY_BE_RC1|MAY_BE_LONG, ssa[i].result_def);
 			break;
@@ -4993,7 +4988,6 @@ static void zend_jit_check_no_symtab(zend_op_array *op_array)
 					}
 					goto check_op1;
 				case ZEND_ECHO:
-				case ZEND_PRINT:
 					if (OP1_MAY_BE(MAY_BE_OBJECT|MAY_BE_ARRAY)) {
 						return;
 					}

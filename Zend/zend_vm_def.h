@@ -402,6 +402,8 @@ ZEND_VM_HELPER_EX(zend_binary_assign_op_obj_helper, VAR|UNUSED|CV, CONST|TMPVAR|
 		}
 	} while (0);
 
+	FREE_OP(free_op_data1);
+	FREE_OP2();
 	FREE_OP1_VAR_PTR();
 	/* assign_obj has two opcodes! */
 	CHECK_EXCEPTION();
@@ -1083,14 +1085,6 @@ ZEND_VM_HANDLER(40, ZEND_ECHO, CONST|TMPVAR|CV, ANY)
 	FREE_OP1();
 	CHECK_EXCEPTION();
 	ZEND_VM_NEXT_OPCODE();
-}
-
-ZEND_VM_HANDLER(41, ZEND_PRINT, CONST|TMPVAR|CV, ANY)
-{
-	USE_OPLINE
-
-	ZVAL_LONG(EX_VAR(opline->result.var), 1);
-	ZEND_VM_DISPATCH_TO_HANDLER(ZEND_ECHO);
 }
 
 ZEND_VM_HELPER_EX(zend_fetch_var_address_helper, CONST|TMPVAR|CV, UNUSED|CONST|VAR, int type)

@@ -2319,14 +2319,6 @@ static int ZEND_FASTCALL  ZEND_ECHO_SPEC_CONST_HANDLER(ZEND_OPCODE_HANDLER_ARGS)
 	ZEND_VM_NEXT_OPCODE();
 }
 
-static int ZEND_FASTCALL  ZEND_PRINT_SPEC_CONST_HANDLER(ZEND_OPCODE_HANDLER_ARGS)
-{
-	USE_OPLINE
-
-	ZVAL_LONG(EX_VAR(opline->result.var), 1);
-	return ZEND_ECHO_SPEC_CONST_HANDLER(ZEND_OPCODE_HANDLER_ARGS_PASSTHRU);
-}
-
 static int ZEND_FASTCALL  ZEND_JMPZ_SPEC_CONST_HANDLER(ZEND_OPCODE_HANDLER_ARGS)
 {
 	USE_OPLINE
@@ -12259,6 +12251,8 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_VAR_CONST(int (*b
 		}
 	} while (0);
 
+	FREE_OP(free_op_data1);
+
 	if (free_op1) {zval_ptr_dtor_nogc(free_op1);};
 	/* assign_obj has two opcodes! */
 	CHECK_EXCEPTION();
@@ -15128,6 +15122,8 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_VAR_CV(int (*bina
 		}
 	} while (0);
 
+	FREE_OP(free_op_data1);
+
 	if (free_op1) {zval_ptr_dtor_nogc(free_op1);};
 	/* assign_obj has two opcodes! */
 	CHECK_EXCEPTION();
@@ -16653,6 +16649,8 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_VAR_TMPVAR(int (*
 		}
 	} while (0);
 
+	FREE_OP(free_op_data1);
+	zval_ptr_dtor_nogc(free_op2);
 	if (free_op1) {zval_ptr_dtor_nogc(free_op1);};
 	/* assign_obj has two opcodes! */
 	CHECK_EXCEPTION();
@@ -18052,6 +18050,9 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_UNUSED_CONST(int 
 			}
 		}
 	} while (0);
+
+	FREE_OP(free_op_data1);
+
 
 	/* assign_obj has two opcodes! */
 	CHECK_EXCEPTION();
@@ -20232,6 +20233,9 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_UNUSED_CV(int (*b
 		}
 	} while (0);
 
+	FREE_OP(free_op_data1);
+
+
 	/* assign_obj has two opcodes! */
 	CHECK_EXCEPTION();
 	ZEND_VM_INC_OPCODE();
@@ -21609,6 +21613,9 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_UNUSED_TMPVAR(int
 			}
 		}
 	} while (0);
+
+	FREE_OP(free_op_data1);
+	zval_ptr_dtor_nogc(free_op2);
 
 	/* assign_obj has two opcodes! */
 	CHECK_EXCEPTION();
@@ -23011,14 +23018,6 @@ static int ZEND_FASTCALL  ZEND_ECHO_SPEC_CV_HANDLER(ZEND_OPCODE_HANDLER_ARGS)
 
 	CHECK_EXCEPTION();
 	ZEND_VM_NEXT_OPCODE();
-}
-
-static int ZEND_FASTCALL  ZEND_PRINT_SPEC_CV_HANDLER(ZEND_OPCODE_HANDLER_ARGS)
-{
-	USE_OPLINE
-
-	ZVAL_LONG(EX_VAR(opline->result.var), 1);
-	return ZEND_ECHO_SPEC_CV_HANDLER(ZEND_OPCODE_HANDLER_ARGS_PASSTHRU);
 }
 
 static int ZEND_FASTCALL  ZEND_JMPZ_SPEC_CV_HANDLER(ZEND_OPCODE_HANDLER_ARGS)
@@ -24574,6 +24573,9 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_CV_CONST(int (*bi
 			}
 		}
 	} while (0);
+
+	FREE_OP(free_op_data1);
+
 
 	/* assign_obj has two opcodes! */
 	CHECK_EXCEPTION();
@@ -28773,6 +28775,9 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_CV_CV(int (*binar
 		}
 	} while (0);
 
+	FREE_OP(free_op_data1);
+
+
 	/* assign_obj has two opcodes! */
 	CHECK_EXCEPTION();
 	ZEND_VM_INC_OPCODE();
@@ -30809,6 +30814,9 @@ static int ZEND_FASTCALL zend_binary_assign_op_obj_helper_SPEC_CV_TMPVAR(int (*b
 		}
 	} while (0);
 
+	FREE_OP(free_op_data1);
+	zval_ptr_dtor_nogc(free_op2);
+
 	/* assign_obj has two opcodes! */
 	CHECK_EXCEPTION();
 	ZEND_VM_INC_OPCODE();
@@ -32377,14 +32385,6 @@ static int ZEND_FASTCALL  ZEND_ECHO_SPEC_TMPVAR_HANDLER(ZEND_OPCODE_HANDLER_ARGS
 	zval_ptr_dtor_nogc(free_op1);
 	CHECK_EXCEPTION();
 	ZEND_VM_NEXT_OPCODE();
-}
-
-static int ZEND_FASTCALL  ZEND_PRINT_SPEC_TMPVAR_HANDLER(ZEND_OPCODE_HANDLER_ARGS)
-{
-	USE_OPLINE
-
-	ZVAL_LONG(EX_VAR(opline->result.var), 1);
-	return ZEND_ECHO_SPEC_TMPVAR_HANDLER(ZEND_OPCODE_HANDLER_ARGS_PASSTHRU);
 }
 
 static int ZEND_FASTCALL  ZEND_JMPZ_SPEC_TMPVAR_HANDLER(ZEND_OPCODE_HANDLER_ARGS)
@@ -36825,31 +36825,31 @@ void zend_init_opcodes_handlers(void)
   	ZEND_ECHO_SPEC_CV_HANDLER,
   	ZEND_ECHO_SPEC_CV_HANDLER,
   	ZEND_ECHO_SPEC_CV_HANDLER,
-  	ZEND_PRINT_SPEC_CONST_HANDLER,
-  	ZEND_PRINT_SPEC_CONST_HANDLER,
-  	ZEND_PRINT_SPEC_CONST_HANDLER,
-  	ZEND_PRINT_SPEC_CONST_HANDLER,
-  	ZEND_PRINT_SPEC_CONST_HANDLER,
-  	ZEND_PRINT_SPEC_TMPVAR_HANDLER,
-  	ZEND_PRINT_SPEC_TMPVAR_HANDLER,
-  	ZEND_PRINT_SPEC_TMPVAR_HANDLER,
-  	ZEND_PRINT_SPEC_TMPVAR_HANDLER,
-  	ZEND_PRINT_SPEC_TMPVAR_HANDLER,
-  	ZEND_PRINT_SPEC_TMPVAR_HANDLER,
-  	ZEND_PRINT_SPEC_TMPVAR_HANDLER,
-  	ZEND_PRINT_SPEC_TMPVAR_HANDLER,
-  	ZEND_PRINT_SPEC_TMPVAR_HANDLER,
-  	ZEND_PRINT_SPEC_TMPVAR_HANDLER,
   	ZEND_NULL_HANDLER,
   	ZEND_NULL_HANDLER,
   	ZEND_NULL_HANDLER,
   	ZEND_NULL_HANDLER,
   	ZEND_NULL_HANDLER,
-  	ZEND_PRINT_SPEC_CV_HANDLER,
-  	ZEND_PRINT_SPEC_CV_HANDLER,
-  	ZEND_PRINT_SPEC_CV_HANDLER,
-  	ZEND_PRINT_SPEC_CV_HANDLER,
-  	ZEND_PRINT_SPEC_CV_HANDLER,
+  	ZEND_NULL_HANDLER,
+  	ZEND_NULL_HANDLER,
+  	ZEND_NULL_HANDLER,
+  	ZEND_NULL_HANDLER,
+  	ZEND_NULL_HANDLER,
+  	ZEND_NULL_HANDLER,
+  	ZEND_NULL_HANDLER,
+  	ZEND_NULL_HANDLER,
+  	ZEND_NULL_HANDLER,
+  	ZEND_NULL_HANDLER,
+  	ZEND_NULL_HANDLER,
+  	ZEND_NULL_HANDLER,
+  	ZEND_NULL_HANDLER,
+  	ZEND_NULL_HANDLER,
+  	ZEND_NULL_HANDLER,
+  	ZEND_NULL_HANDLER,
+  	ZEND_NULL_HANDLER,
+  	ZEND_NULL_HANDLER,
+  	ZEND_NULL_HANDLER,
+  	ZEND_NULL_HANDLER,
   	ZEND_JMP_SPEC_HANDLER,
   	ZEND_JMP_SPEC_HANDLER,
   	ZEND_JMP_SPEC_HANDLER,

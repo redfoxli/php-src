@@ -17365,13 +17365,6 @@ static int zend_jit_echo(zend_llvm_ctx    &llvm_ctx,
 		JIT_CHECK(zend_jit_check_exception(llvm_ctx, opline));
 //???	}
 
-	if (opline->opcode == ZEND_PRINT) {
-		//JIT: ZVAL_LONG(EX_VAR(opline->result.var), 1);
-		Value *res = zend_jit_load_tmp_zval(llvm_ctx, opline->result.var);
-		zend_jit_save_zval_type_info(llvm_ctx, res, RES_SSA_VAR(), RES_INFO(), llvm_ctx.builder.getInt32(IS_LONG));
-		zend_jit_save_zval_lval(llvm_ctx, res, RES_SSA_VAR(), RES_INFO(), LLVM_GET_LONG(1));
-	}
-
 	//JIT: ZEND_VM_NEXT_OPCODE();
 	llvm_ctx.valid_opline = 0;
 	return 1;
@@ -18098,7 +18091,6 @@ static int zend_jit_codegen_ex(zend_jit_context *ctx,
 					if (!zend_jit_send_var_no_ref(llvm_ctx, op_array, opline)) return 0;
 					break;
 				case ZEND_ECHO:
-				case ZEND_PRINT:
 					if (!zend_jit_echo(llvm_ctx, op_array, opline)) return 0;
 					break;
 				case ZEND_FREE:
@@ -18699,7 +18691,6 @@ int zend_opline_supports_jit(zend_op_array    *op_array,
 		case ZEND_ADD_CHAR:
 		case ZEND_ADD_VAR:
 		case ZEND_ECHO:
-		case ZEND_PRINT:
 		case ZEND_FREE:
 		case ZEND_TYPE_CHECK:
 //???		case ZEND_INIT_ARRAY:
