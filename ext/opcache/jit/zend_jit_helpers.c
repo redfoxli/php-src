@@ -96,10 +96,6 @@ ZEND_FASTCALL void zend_jit_helper_check_internal_type_hint(zend_function *zf, u
 	char *need_msg;
 	zend_class_entry *ce;
 
-	if (UNEXPECTED(!zf->common.arg_info)) {
-		return;
-	}
-
 	if (EXPECTED(arg_num <= zf->common.num_args)) {
 		cur_arg_info = &zf->internal_function.arg_info[arg_num-1];
 	} else if (zf->common.fn_flags & ZEND_ACC_VARIADIC) {
@@ -143,10 +139,6 @@ ZEND_FASTCALL void zend_jit_helper_check_type_hint(zend_function *zf, uint32_t a
 	zend_arg_info *cur_arg_info;
 	char *need_msg;
 	zend_class_entry *ce;
-
-	if (UNEXPECTED(!zf->common.arg_info)) {
-		return;
-	}
 
 	if (EXPECTED(arg_num <= zf->common.num_args)) {
 		cur_arg_info = &zf->common.arg_info[arg_num-1];
@@ -207,10 +199,6 @@ ZEND_FASTCALL void zend_jit_helper_check_type_hint_ex(zend_function *zf, uint32_
 	char *need_msg;
 	zend_class_entry *ce;
 
-	if (UNEXPECTED(!zf->common.arg_info)) {
-		return;
-	}
-
 	if (EXPECTED(arg_num <= zf->common.num_args)) {
 		cur_arg_info = &zf->common.arg_info[arg_num-1];
 	} else if (zf->common.fn_flags & ZEND_ACC_VARIADIC) {
@@ -255,10 +243,6 @@ static inline int zend_verify_missing_arg_type(zend_function *zf, uint32_t arg_n
 	zend_arg_info *cur_arg_info;
 	char *need_msg;
 	zend_class_entry *ce;
-
-	if (UNEXPECTED(!zf->common.arg_info)) {
-		return 1;
-	}
 
 	if (EXPECTED(arg_num <= zf->common.num_args)) {
 		cur_arg_info = &zf->common.arg_info[arg_num-1];
