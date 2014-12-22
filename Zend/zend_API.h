@@ -610,8 +610,8 @@ END_EXTERN_C()
 #define RETVAL_RES(r)			 		ZVAL_RES(return_value, r)
 #define RETVAL_OBJ(r)			 		ZVAL_OBJ(return_value, r)
 #define RETVAL_ZVAL(zv, copy, dtor)		ZVAL_ZVAL(return_value, zv, copy, dtor)
-#define RETVAL_FALSE  					ZVAL_BOOL(return_value, 0)
-#define RETVAL_TRUE   					ZVAL_BOOL(return_value, 1)
+#define RETVAL_FALSE  					ZVAL_FALSE(return_value)
+#define RETVAL_TRUE   					ZVAL_TRUE(return_value)
 
 #define RETURN_BOOL(b) 					{ RETVAL_BOOL(b); return; }
 #define RETURN_NULL() 					{ RETVAL_NULL(); return;}
@@ -676,7 +676,7 @@ END_EXTERN_C()
 #ifdef FAST_ZPP
 
 #define Z_EXPECTED_TYPES(_) \
-	_(Z_EXPECTED_LONG,		"long") \
+	_(Z_EXPECTED_LONG,		"integer") \
 	_(Z_EXPECTED_BOOL,		"boolean") \
 	_(Z_EXPECTED_STRING,	"string") \
 	_(Z_EXPECTED_ARRAY,		"array") \
@@ -684,7 +684,7 @@ END_EXTERN_C()
 	_(Z_EXPECTED_RESOURCE,	"resource") \
 	_(Z_EXPECTED_PATH,		"a valid path") \
 	_(Z_EXPECTED_OBJECT,	"object") \
-	_(Z_EXPECTED_DOUBLE,	"double")
+	_(Z_EXPECTED_DOUBLE,	"float")
 
 #define Z_EXPECTED_TYPE_ENUM(id, str) id,
 #define Z_EXPECTED_TYPE_STR(id, str)  str,

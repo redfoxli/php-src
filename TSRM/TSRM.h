@@ -20,6 +20,8 @@
 # include <tsrm_config.h>
 #endif
 
+#include "main/php_stdint.h"
+
 #ifdef TSRM_WIN32
 #	ifdef TSRM_EXPORTS
 #		define TSRM_API __declspec(dllexport)
@@ -32,13 +34,8 @@
 #	define TSRM_API
 #endif
 
-#ifdef _WIN64
-typedef __int64 tsrm_intptr_t;
-typedef unsigned __int64 tsrm_uintptr_t;
-#else
-typedef long tsrm_intptr_t;
-typedef unsigned long tsrm_uintptr_t;
-#endif
+typedef intptr_t tsrm_intptr_t;
+typedef uintptr_t tsrm_uintptr_t;
 
 /* Only compile multi-threading functions if we're in ZTS mode */
 #ifdef ZTS
@@ -155,7 +152,7 @@ TSRM_API void *tsrm_new_interpreter_context(void);
 TSRM_API void *tsrm_set_interpreter_context(void *new_ctx);
 TSRM_API void tsrm_free_interpreter_context(void *context);
 
-TSRM_API inline void *tsrm_get_ls_cache(void);
+TSRM_API void *tsrm_get_ls_cache(void);
 
 #ifdef TSRM_WIN32
 # define TSRM_TLS __declspec(thread)

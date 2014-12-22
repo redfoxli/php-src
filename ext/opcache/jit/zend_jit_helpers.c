@@ -103,7 +103,7 @@ ZEND_FASTCALL void zend_jit_helper_check_internal_type_hint(zend_function *zf, u
 	if (EXPECTED(arg_num <= zf->common.num_args)) {
 		cur_arg_info = &zf->internal_function.arg_info[arg_num-1];
 	} else if (zf->common.fn_flags & ZEND_ACC_VARIADIC) {
-		cur_arg_info = &zf->internal_function.arg_info[zf->common.num_args-1];
+		cur_arg_info = &zf->internal_function.arg_info[zf->common.num_args];
 	} else {
 		return;
 	}
@@ -151,7 +151,7 @@ ZEND_FASTCALL void zend_jit_helper_check_type_hint(zend_function *zf, uint32_t a
 	if (EXPECTED(arg_num <= zf->common.num_args)) {
 		cur_arg_info = &zf->common.arg_info[arg_num-1];
 	} else if (zf->common.fn_flags & ZEND_ACC_VARIADIC) {
-		cur_arg_info = &zf->common.arg_info[zf->common.num_args-1];
+		cur_arg_info = &zf->common.arg_info[zf->common.num_args];
 	} else {
 		return;
 	}
@@ -214,7 +214,7 @@ ZEND_FASTCALL void zend_jit_helper_check_type_hint_ex(zend_function *zf, uint32_
 	if (EXPECTED(arg_num <= zf->common.num_args)) {
 		cur_arg_info = &zf->common.arg_info[arg_num-1];
 	} else if (zf->common.fn_flags & ZEND_ACC_VARIADIC) {
-		cur_arg_info = &zf->common.arg_info[zf->common.num_args-1];
+		cur_arg_info = &zf->common.arg_info[zf->common.num_args];
 	} else {
 		return;
 	}
@@ -263,7 +263,7 @@ static inline int zend_verify_missing_arg_type(zend_function *zf, uint32_t arg_n
 	if (EXPECTED(arg_num <= zf->common.num_args)) {
 		cur_arg_info = &zf->common.arg_info[arg_num-1];
 	} else if (zf->common.fn_flags & ZEND_ACC_VARIADIC) {
-		cur_arg_info = &zf->common.arg_info[zf->common.num_args-1];
+		cur_arg_info = &zf->common.arg_info[zf->common.num_args];
 	} else {
 		return 1;
 	}
@@ -479,7 +479,7 @@ ZEND_FASTCALL zval* zend_jit_obj_proxy_concat(zval *var_ptr, zval *value) {
 
 ZEND_FASTCALL void zend_jit_helper_free_extra_args(zend_execute_data *call)
 {
-	uint32_t first_extra_arg = call->func->op_array.num_args - ((call->func->op_array.fn_flags & ZEND_ACC_VARIADIC) != 0);
+	uint32_t first_extra_arg = call->func->op_array.num_args;
 	zval *end = ZEND_CALL_VAR_NUM(call, call->func->op_array.last_var + call->func->op_array.T);
 	zval *p = end + (ZEND_CALL_NUM_ARGS(call) - first_extra_arg);
 

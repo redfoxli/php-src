@@ -11084,9 +11084,7 @@ static int zend_jit_check_arg_send_type(zend_llvm_ctx    &llvm_ctx,
 //???
 						llvm_ctx.builder.CreateAdd(
 							llvm_ctx.builder.CreateMul(
-								llvm_ctx.builder.CreateSub(
-									num_args,
-									llvm_ctx.builder.getInt32(1)),
+								num_args,
 								llvm_ctx.builder.getInt32(sizeof(zend_arg_info))),
 							llvm_ctx.builder.getInt32(offsetof(zend_arg_info,pass_by_reference)))), 1),
 				llvm_ctx.builder.getInt8(flags)),
@@ -15141,9 +15139,6 @@ static int zend_jit_init_func_execute_data(zend_llvm_ctx    &llvm_ctx,
 	/* Handle arguments */
 	if (func && num_args != -1) {
 		uint32_t first_extra_arg = func->op_array.num_args;
-		if (UNEXPECTED((func->op_array.fn_flags & ZEND_ACC_VARIADIC) != 0)) {
-			first_extra_arg--;
-		}
 		if (num_args > first_extra_arg) {
 			if (EXPECTED((func->op_array.fn_flags & ZEND_ACC_HAS_TYPE_HINTS) == 0)) {
 				/* Skip useless ZEND_RECV and ZEND_RECV_INIT opcodes */
@@ -15231,34 +15226,16 @@ static int zend_jit_init_func_execute_data(zend_llvm_ctx    &llvm_ctx,
 
 		if (func) {
 			uint32_t first_extra_arg = func->op_array.num_args;
-			if (UNEXPECTED((func->op_array.fn_flags & ZEND_ACC_VARIADIC) != 0)) {
-				first_extra_arg--;
-			}
 			first_extra_arg_val = llvm_ctx.builder.getInt32(first_extra_arg);
 		} else {
 			//JIT: first_extra_arg = op_array->num_args;
-			//JIT: if (UNEXPECTED((op_array->fn_flags & ZEND_ACC_VARIADIC) != 0)) {
-			//JIT: first_extra_arg--;
 			first_extra_arg_val = 
-				llvm_ctx.builder.CreateSub(
-					llvm_ctx.builder.CreateAlignedLoad(
-						zend_jit_GEP(
-							llvm_ctx,
-							func_addr,
-							offsetof(zend_function, op_array.num_args),
-							PointerType::getUnqual(Type::getInt32Ty(llvm_ctx.context))), 4),
-				llvm_ctx.builder.CreateZExtOrBitCast(
-					llvm_ctx.builder.CreateICmpNE(
-						llvm_ctx.builder.CreateAnd(
-							llvm_ctx.builder.CreateAlignedLoad(
-								zend_jit_GEP(
-									llvm_ctx,
-									func_addr,
-									offsetof(zend_function, op_array.fn_flags),
-									PointerType::getUnqual(Type::getInt32Ty(llvm_ctx.context))), 4),
-							llvm_ctx.builder.getInt32(ZEND_ACC_VARIADIC)),
-						llvm_ctx.builder.getInt32(0)),
-					Type::getInt32Ty(llvm_ctx.context)));
+				llvm_ctx.builder.CreateAlignedLoad(
+					zend_jit_GEP(
+						llvm_ctx,
+						func_addr,
+						offsetof(zend_function, op_array.num_args),
+						PointerType::getUnqual(Type::getInt32Ty(llvm_ctx.context))), 4);
 		}
 		if (num_args != -1) {
 			num_args_val = llvm_ctx.builder.getInt32(num_args);
@@ -15960,7 +15937,7 @@ static int zend_jit_check_type_hints(zend_llvm_ctx    &llvm_ctx,
 				if (i < func->common.num_args) {
 					cur_arg_info = &func->common.arg_info[i];
 				} else if (func->common.fn_flags & ZEND_ACC_VARIADIC) {
-					cur_arg_info = &func->common.arg_info[func->common.num_args-1];
+					cur_arg_info = &func->common.arg_info[func->common.num_args];
 				} else {
 					break;
 				}
@@ -16885,7 +16862,7 @@ static int zend_jit_free_extra_args(zend_llvm_ctx    &llvm_ctx,
                                     zend_op_array    *op_array,
                                     zend_op          *opline)
 {
-	uint32_t first_extra_arg = op_array->num_args - ((op_array->fn_flags & ZEND_ACC_VARIADIC) != 0);
+	uint32_t first_extra_arg = op_array->num_args;
 	
 	//JIT: if (UNEXPECTED(ZEND_CALL_NUM_ARGS(call) > first_extra_arg)) {
 	Value *num_args = 
@@ -17225,7 +17202,7 @@ static int zend_jit_recv(zend_llvm_ctx    &llvm_ctx,
 			if (arg_num < op_array->num_args) {
 				cur_arg_info = &op_array->arg_info[arg_num];
 			} else if (op_array->fn_flags & ZEND_ACC_VARIADIC) {
-				cur_arg_info = &op_array->arg_info[op_array->num_args-1];
+				cur_arg_info = &op_array->arg_info[op_array->num_args];
 			} else {
 				break;
 			}
@@ -19058,7 +19035,7 @@ int zend_jit_codegen_startup(size_t size)
 			break;
 		}
 # endif
-		zend_uchar *p = (zend_uchar*)mmap(NULL, size,
+		p = (zend_uchar*)mmap(NULL, size,
 			PROT_EXEC | PROT_READ | PROT_WRITE,
 			(shared ? MAP_SHARED : MAP_PRIVATE) | MAP_ANONYMOUS, -1, 0);
 		if (p == MAP_FAILED) {
