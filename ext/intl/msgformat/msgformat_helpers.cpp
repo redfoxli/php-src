@@ -324,13 +324,13 @@ static void umsg_set_timezone(MessageFormatter_object *mfo,
 	 * appear inside complex formats because ::getFormats() returns NULL
 	 * for all uncached formats, which is the case for complex formats
 	 * unless they were set via one of the ::setFormat() methods */
-	
+
 	if (mfo->mf_data.tz_set) {
 		return; /* already done */
 	}
 
 	formats = mf->getFormats(count);
-	
+
 	if (formats == NULL) {
 		intl_errors_set(&err, U_MEMORY_ALLOCATION_ERROR,
 			"Out of memory retrieving subformats", 0);
@@ -342,7 +342,7 @@ static void umsg_set_timezone(MessageFormatter_object *mfo,
 		if (df == NULL) {
 			continue;
 		}
-		
+
 		if (used_tz == NULL) {
 			zval nullzv, *zvptr = &nullzv;
 			ZVAL_NULL(zvptr);
@@ -351,7 +351,7 @@ static void umsg_set_timezone(MessageFormatter_object *mfo,
 				continue;
 			}
 		}
-		
+
 		df->setTimeZone(*used_tz);
 	}
 
@@ -363,7 +363,7 @@ static void umsg_set_timezone(MessageFormatter_object *mfo,
 U_CFUNC void umsg_format_helper(MessageFormatter_object *mfo,
 								HashTable *args,
 								UChar **formatted,
-								int *formatted_len)
+								int32_t *formatted_len)
 {
 	int arg_count = zend_hash_num_elements(args);
 	std::vector<Formattable> fargs;
@@ -377,7 +377,7 @@ U_CFUNC void umsg_format_helper(MessageFormatter_object *mfo,
 	}
 
 	types = umsg_get_types(mfo, err);
-	
+
 	umsg_set_timezone(mfo, err);
 
 	fargs.resize(arg_count);
@@ -388,7 +388,7 @@ U_CFUNC void umsg_format_helper(MessageFormatter_object *mfo,
 
 	// Key related variables
 	zend_string		*str_index;
-	zend_ulong			num_index;
+	zend_ulong		 num_index;
 
 	ZEND_HASH_FOREACH_KEY_VAL(args, num_index, str_index, elem) {
 		Formattable& formattable = fargs[argNum];
@@ -537,10 +537,9 @@ retry_kint64:
 					double dd = intl_zval_to_millis(elem, &err, "msgfmt_format");
 					if (U_FAILURE(err.code)) {
 						char *message, *key_char;
-						int key_len;
+						size_t key_len;
 						UErrorCode status = UErrorCode();
-						if (intl_charFromString(key, &key_char, &key_len,
-								&status) == SUCCESS) {
+						if (intl_charFromString(key, &key_char, &key_len, &status) == SUCCESS) {
 							spprintf(&message, 0, "The argument for key '%s' "
 								"cannot be used as a date or time", key_char);
 							intl_errors_set(&err, err.code, message, 1);
@@ -581,7 +580,7 @@ retry_kint64:
 			default:
 				{
 					char *message, *key_char;
-					int key_len;
+					size_t key_len;
 					UErrorCode status = UErrorCode();
 					if (intl_charFromString(key, &key_char, &key_len,
 							&status) == SUCCESS) {
@@ -628,7 +627,7 @@ retry_kint64:
 
 #define cleanup_zvals() for(int j=i;j>=0;j--) { zval_ptr_dtor((*args)+i); }
 
-U_CFUNC void umsg_parse_helper(UMessageFormat *fmt, int *count, zval **args, UChar *source, int source_len, UErrorCode *status)
+U_CFUNC void umsg_parse_helper(UMessageFormat *fmt, int *count, zval **args, UChar *source, int32_t source_len, UErrorCode *status)
 {
     UnicodeString srcString(source, source_len);
     Formattable *fargs = ((const MessageFormat*)fmt)->parse(srcString, *count, *status);
@@ -645,7 +644,7 @@ U_CFUNC void umsg_parse_helper(UMessageFormat *fmt, int *count, zval **args, UCh
 		double aDate;
 		UnicodeString temp;
 		char *stmp;
-		int stmp_len;
+		size_t stmp_len;
 
 		switch(fargs[i].getType()) {
         case Formattable::kDate:

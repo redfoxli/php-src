@@ -27,7 +27,7 @@
 
 #include <zend_exceptions.h>
 
-static int create_transliterator( char *str_id, int str_id_len, zend_long direction, zval *object )
+static int create_transliterator( char *str_id, size_t str_id_len, zend_long direction, zval *object )
 {
 	Transliterator_object *to;
 	UChar	              *ustr_id    = NULL;
@@ -63,7 +63,7 @@ static int create_transliterator( char *str_id, int str_id_len, zend_long direct
 	if (ustr_id) {
 		efree( ustr_id );
 	}
-	
+
 	if( U_FAILURE( TRANSLITERATOR_ERROR_CODE( to ) ) )
 	{
 		char *buf = NULL;
@@ -82,7 +82,7 @@ static int create_transliterator( char *str_id, int str_id_len, zend_long direct
 		zval_dtor( object );
 		return FAILURE;
 	}
-	
+
 	transliterator_object_construct( object, utrans, TRANSLITERATOR_ERROR_CODE_P( to ) );
 	/* no need to close the transliterator manually on construction error */
 	if( U_FAILURE( TRANSLITERATOR_ERROR_CODE( to ) ) )
@@ -103,13 +103,13 @@ static int create_transliterator( char *str_id, int str_id_len, zend_long direct
  */
 PHP_FUNCTION( transliterator_create )
 {
-	char  *str_id;
-	size_t   str_id_len;
-	zend_long  direction   = TRANSLITERATOR_FORWARD;
+	char     *str_id;
+	size_t    str_id_len;
+	zend_long direction   = TRANSLITERATOR_FORWARD;
 	int res;
 
 	TRANSLITERATOR_METHOD_INIT_VARS;
-	
+
 	(void) to; /* unused */
 
 	if( zend_parse_parameters( ZEND_NUM_ARGS(), "s|l",
@@ -124,7 +124,7 @@ PHP_FUNCTION( transliterator_create )
 	res = create_transliterator( str_id, str_id_len, direction, object );
 	if( res == FAILURE )
 		RETURN_NULL();
-	
+
 	/* success, leave return_value as it is (set by create_transliterator) */
 }
 /* }}} */
@@ -136,10 +136,10 @@ PHP_FUNCTION( transliterator_create )
 PHP_FUNCTION( transliterator_create_from_rules )
 {
 	char		    *str_rules;
-	size_t             str_rules_len;
+	size_t          str_rules_len;
 	UChar		    *ustr_rules    = NULL;
 	int32_t         ustr_rules_len = 0;
-	zend_long            direction      = TRANSLITERATOR_FORWARD;
+	zend_long       direction      = TRANSLITERATOR_FORWARD;
 	UParseError     parse_error    = {0, -1};
 	UTransliterator *utrans;
 	UChar           id[] = {0x52, 0x75, 0x6C, 0x65, 0x73, 0x54, 0x72,
@@ -177,7 +177,7 @@ PHP_FUNCTION( transliterator_create_from_rules )
 	if (ustr_rules) {
 		efree( ustr_rules );
 	}
-	
+
 	intl_error_set_code( NULL, INTL_DATA_ERROR_CODE( to ) );
 	if( U_FAILURE( INTL_DATA_ERROR_CODE( to ) ) )
 	{
@@ -225,7 +225,7 @@ PHP_FUNCTION( transliterator_create_inverse )
 	object = return_value;
 	object_init_ex( object, Transliterator_ce_ptr );
 	TRANSLITERATOR_METHOD_FETCH_OBJECT_NO_CHECK; /* change "to" into new object (from "object" ) */
-	
+
 	utrans = utrans_openInverse( to_orig->utrans, TRANSLITERATOR_ERROR_CODE_P( to ) );
 	INTL_CTOR_CHECK_STATUS( to, "transliterator_create_inverse: could not create "
 		"inverse ICU transliterator" );
@@ -245,7 +245,7 @@ PHP_FUNCTION( transliterator_list_ids )
 	const UChar	  *elem;
 	int32_t		  elem_len;
 	UErrorCode	  status = U_ZERO_ERROR;
-	
+
 	intl_error_reset( NULL );
 
 	if( zend_parse_parameters_none() == FAILURE )
@@ -266,7 +266,7 @@ PHP_FUNCTION( transliterator_list_ids )
 	while( (elem = uenum_unext( en, &elem_len, &status )) )
 	{
 		char *el_char = NULL;
-		int  el_len   = 0;
+		size_t el_len   = 0;
 
 		intl_convert_utf16_to_utf8( &el_char, &el_len, elem, elem_len, &status );
 
@@ -303,11 +303,11 @@ PHP_FUNCTION( transliterator_transliterate )
 	char	    *str;
 	UChar		*ustr		= NULL,
 				*uresult	= NULL;
-	size_t			str_len;
+	size_t	    str_len;
 	int32_t		ustr_len	= 0,
 				capacity,
 				uresult_len;
-	zend_long		start		= 0,
+	zend_long	start		= 0,
 				limit		= -1;
 	int			success     = 0;
 	zval 		tmp_object;
@@ -327,7 +327,7 @@ PHP_FUNCTION( transliterator_transliterate )
 				"transliterator_transliterate: bad arguments", 0 );
 			RETURN_FALSE;
 		}
-		
+
 		if( Z_TYPE_P( arg1 ) == IS_OBJECT &&
 			instanceof_function( Z_OBJCE_P( arg1 ), Transliterator_ce_ptr ) )
 		{
@@ -362,7 +362,7 @@ PHP_FUNCTION( transliterator_transliterate )
 			"transliterator_transliterate: bad arguments", 0 );
 		RETURN_FALSE;
 	}
-	
+
 	if( limit < -1 )
 	{
 		intl_error_set( NULL, U_ILLEGAL_ARGUMENT_ERROR,
@@ -382,7 +382,7 @@ PHP_FUNCTION( transliterator_transliterate )
 	/* end argument parsing/validation */
 
 	TRANSLITERATOR_METHOD_FETCH_OBJECT;
-	
+
 	intl_convert_utf8_to_utf16( &ustr, &ustr_len, str, str_len,
 		TRANSLITERATOR_ERROR_CODE_P( to ) );
 	INTL_METHOD_CHECK_STATUS( to, "String conversion of string to UTF-16 failed" );
@@ -429,7 +429,7 @@ PHP_FUNCTION( transliterator_transliterate )
 		else if(TRANSLITERATOR_ERROR_CODE( to ) == U_STRING_NOT_TERMINATED_WARNING )
 		{
 			uresult = safe_erealloc( uresult, uresult_len, sizeof( UChar ), 1 * sizeof( UChar ) );
-			
+
 			intl_error_reset( TRANSLITERATOR_ERROR_P( to ) );
 			break;
 		}
@@ -445,7 +445,7 @@ PHP_FUNCTION( transliterator_transliterate )
 	}
 
 	uresult[uresult_len] = (UChar) 0;
-	
+
 	success = 1;
 
 cleanup:

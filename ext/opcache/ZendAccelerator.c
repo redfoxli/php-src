@@ -385,7 +385,7 @@ static void accel_use_shm_interned_strings(void)
 	}
 
 	/* function table hash keys */
-	for (idx = 0; idx < CG(function_table)->nNumUsed; idx++) {		
+	for (idx = 0; idx < CG(function_table)->nNumUsed; idx++) {
 		p = CG(function_table)->arData + idx;
 		if (Z_TYPE(p->val) == IS_UNDEF) continue;
 		if (p->key) {
@@ -417,7 +417,7 @@ static void accel_use_shm_interned_strings(void)
 
 			q = ce->properties_info.arData + j;
 			if (Z_TYPE(q->val) == IS_UNDEF) continue;
-			
+
 			info = (zend_property_info*)Z_PTR(q->val);
 
 			if (q->key) {
@@ -450,7 +450,7 @@ static void accel_use_shm_interned_strings(void)
 	}
 
 	/* constant hash keys */
-	for (idx = 0; idx < EG(zend_constants)->nNumUsed; idx++) {		
+	for (idx = 0; idx < EG(zend_constants)->nNumUsed; idx++) {
 		p = EG(zend_constants)->arData + idx;
 		if (!Z_TYPE(p->val) == IS_UNDEF) continue;
 		if (p->key) {
@@ -459,12 +459,12 @@ static void accel_use_shm_interned_strings(void)
 	}
 
 	/* auto globals hash keys and names */
-	for (idx = 0; idx < CG(auto_globals)->nNumUsed; idx++) {		
+	for (idx = 0; idx < CG(auto_globals)->nNumUsed; idx++) {
 		zend_auto_global *auto_global;
 
 		p = CG(auto_globals)->arData + idx;
 		if (Z_TYPE(p->val) == IS_UNDEF) continue;
-		
+
 		auto_global = (zend_auto_global*)Z_PTR(p->val);;
 
 		auto_global->name = accel_new_interned_string(auto_global->name);
@@ -839,7 +839,7 @@ static inline int do_validate_timestamps(zend_persistent_script *persistent_scri
 		if (strcmp(persistent_script->full_path->val, file_handle->opened_path) != 0) {
 			return FAILURE;
 		}
-	} else {		
+	} else {
 		full_path_ptr = accelerator_orig_zend_resolve_path(file_handle->filename, strlen(file_handle->filename));
 		if (full_path_ptr && strcmp(persistent_script->full_path->val, full_path_ptr) != 0) {
 			efree(full_path_ptr);
@@ -1094,7 +1094,7 @@ int zend_accel_invalidate(const char *filename, int filename_len, zend_bool forc
 
 	accelerator_shm_read_unlock();
 	efree(realpath);
-	
+
 	return SUCCESS;
 }
 
@@ -1454,7 +1454,7 @@ zend_op_array *persistent_compile_file(zend_file_handle *file_handle, int type)
 		!ZCG(enabled) || !accel_startup_ok ||
 		(!ZCG(counted) && !ZCSG(accelerator_enabled)) ||
 	    (ZCSG(restart_in_progress) && accel_restart_is_active()) ||
-	    (is_stream_path(file_handle->filename) && 
+	    (is_stream_path(file_handle->filename) &&
 	     !is_cacheable_stream_path(file_handle->filename))) {
 		/* The Accelerator is disabled, act as if without the Accelerator */
 		return accelerator_orig_compile_file(file_handle, type);
@@ -1916,8 +1916,8 @@ static void accel_fast_hash_destroy(HashTable *ht)
 {
 	uint idx;
 	Bucket *p;
-	
-	for (idx = 0; idx < ht->nNumUsed; idx++) {	
+
+	for (idx = 0; idx < ht->nNumUsed; idx++) {
 		p = ht->arData + idx;
 		if (Z_TYPE(p->val) == IS_UNDEF) continue;
 		accel_fast_zval_dtor(&p->val);
@@ -1939,13 +1939,13 @@ static void accel_fast_zval_dtor(zval *zvalue)
 				break;
 			case IS_OBJECT:
 				{
-				
+
 					OBJ_RELEASE(Z_OBJ_P(zvalue));
 				}
 				break;
 			case IS_RESOURCE:
 				{
-				
+
 					/* destroy resource */
 					zend_list_delete(Z_RES_P(zvalue));
 				}
@@ -2019,7 +2019,7 @@ static void zend_accel_fast_shutdown(void)
 
 		ZEND_HASH_REVERSE_FOREACH(EG(function_table), 0) {
 			zend_function *func = Z_PTR(_p->val);
-		
+
 			if (func->type == ZEND_INTERNAL_FUNCTION) {
 				break;
 			} else {
@@ -2404,12 +2404,12 @@ static int accel_startup(zend_extension *extension)
 	/* Load black list */
 	accel_blacklist.entries = NULL;
 	if (ZCG(enabled) && accel_startup_ok &&
-	    ZCG(accel_directives).user_blacklist_filename && 
+	    ZCG(accel_directives).user_blacklist_filename &&
 	    *ZCG(accel_directives.user_blacklist_filename)) {
 		zend_accel_blacklist_init(&accel_blacklist);
 		zend_accel_blacklist_load(&accel_blacklist, ZCG(accel_directives.user_blacklist_filename));
 	}
-	
+
 #if 0
 	/* FIXME: We probably don't need it here */
 	zend_accel_copy_internal_functions();

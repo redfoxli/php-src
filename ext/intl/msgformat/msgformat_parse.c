@@ -28,7 +28,7 @@
 #include "intl_convert.h"
 
 /* {{{ */
-static void msgfmt_do_parse(MessageFormatter_object *mfo, char *source, size_t src_len, zval *return_value) 
+static void msgfmt_do_parse(MessageFormatter_object *mfo, char *source, size_t src_len, zval *return_value)
 {
 	zval *fargs;
 	int count = 0;
@@ -92,11 +92,11 @@ PHP_FUNCTION( msgfmt_parse_message )
 	UChar      *spattern = NULL;
 	int         spattern_len = 0;
 	char       *pattern = NULL;
-	size_t         pattern_len = 0;
+	size_t      pattern_len = 0;
 	const char *slocale = NULL;
-	size_t         slocale_len = 0;
+	size_t      slocale_len = 0;
 	char       *source = NULL;
-	size_t         src_len = 0;
+	size_t      src_len = 0;
 	MessageFormatter_object mf = {0};
 	MessageFormatter_object *mfo = &mf;
 

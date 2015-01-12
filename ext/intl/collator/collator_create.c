@@ -28,7 +28,7 @@
 static void collator_ctor(INTERNAL_FUNCTION_PARAMETERS)
 {
 	const char*      locale;
-	size_t              locale_len = 0;
+	size_t           locale_len = 0;
 	zval*            object;
 	Collator_object* co;
 
@@ -55,7 +55,7 @@ static void collator_ctor(INTERNAL_FUNCTION_PARAMETERS)
 	co->ucoll = ucol_open( locale, COLLATOR_ERROR_CODE_P( co ) );
 	INTL_CTOR_CHECK_STATUS(co, "collator_create: unable to open ICU collator");
 }
-/* }}} */ 
+/* }}} */
 
 /* {{{ proto Collator collator_create( string $locale )
  * Create collator.

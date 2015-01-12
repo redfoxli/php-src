@@ -270,7 +270,7 @@ static void php_converter_append_fromUnicode_target(zval *val, UConverterFromUni
 			return;
 		case IS_STRING:
 		{
-			int vallen = Z_STRLEN_P(val);
+			size_t vallen = Z_STRLEN_P(val);
 			if (TARGET_CHECK(args, vallen)) {
 				memcpy(args->target, Z_STRVAL_P(val), vallen);
 				args->target += vallen;
@@ -372,7 +372,7 @@ static inline zend_bool php_converter_set_callbacks(php_converter_object *objval
 /* {{{ php_converter_set_encoding */
 static zend_bool php_converter_set_encoding(php_converter_object *objval,
                                             UConverter **pcnv,
-                                            const char *enc, int enc_len
+                                            const char *enc, size_t enc_len
                                            ) {
 	UErrorCode error = U_ZERO_ERROR;
 	UConverter *cnv = ucnv_open(enc, &error);
@@ -842,7 +842,7 @@ static PHP_METHOD(UConverter, transcode) {
 	} else {
 		RETVAL_FALSE;
 	}
-	
+
 	if (src_cnv) {
 		ucnv_close(src_cnv);
 	}
@@ -864,7 +864,7 @@ static PHP_METHOD(UConverter, getErrorCode) {
 		RETURN_FALSE;
 	}
 
-	RETURN_LONG(intl_error_get_code(&(objval->error)));	
+	RETURN_LONG(intl_error_get_code(&(objval->error)));
 }
 /* }}} */
 

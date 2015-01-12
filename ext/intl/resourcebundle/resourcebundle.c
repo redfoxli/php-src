@@ -24,7 +24,7 @@
 #include "resourcebundle/resourcebundle_class.h"
 
 /* {{{ ResourceBundle_extract_value */
-void resourcebundle_extract_value( zval *return_value, ResourceBundle_object *source ) 
+void resourcebundle_extract_value( zval *return_value, ResourceBundle_object *source )
 {
 	UResType               restype;
 	const UChar*           ufield;
@@ -32,7 +32,7 @@ void resourcebundle_extract_value( zval *return_value, ResourceBundle_object *so
 	const int32_t*         vfield;
 	int32_t                ilen;
 	int                    i;
-	zend_long                   lfield;
+	zend_long              lfield;
 	ResourceBundle_object* newrb;
 
 	restype = ures_getType( source->child );
