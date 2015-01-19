@@ -2,7 +2,7 @@
    +----------------------------------------------------------------------+
    | Zend Engine                                                          |
    +----------------------------------------------------------------------+
-   | Copyright (c) 1998-2014 Zend Technologies Ltd. (http://www.zend.com) |
+   | Copyright (c) 1998-2015 Zend Technologies Ltd. (http://www.zend.com) |
    +----------------------------------------------------------------------+
    | This source file is subject to version 2.00 of the Zend license,     |
    | that is bundled with this package in the file LICENSE, and is        |
@@ -158,6 +158,7 @@ ZEND_API void zend_hash_packed_to_hash(HashTable *ht)
 {
 	HANDLE_BLOCK_INTERRUPTIONS();
 	ht->u.flags &= ~HASH_FLAG_PACKED;
+	ht->nTableMask = ht->nTableSize - 1;
 	ht->arData = (Bucket *) safe_perealloc(ht->arData, ht->nTableSize, sizeof(Bucket) + sizeof(uint32_t), 0, ht->u.flags & HASH_FLAG_PERSISTENT);
 	ht->arHash = (uint32_t*)(ht->arData + ht->nTableSize);
 	zend_hash_rehash(ht);
@@ -169,7 +170,7 @@ ZEND_API void zend_hash_to_packed(HashTable *ht)
 	HANDLE_BLOCK_INTERRUPTIONS();
 	ht->u.flags |= HASH_FLAG_PACKED;
 	ht->nTableMask = 0;
-	ht->arData = erealloc(ht->arData, ht->nTableSize * sizeof(Bucket));
+	ht->arData = (Bucket *) perealloc(ht->arData, ht->nTableSize * sizeof(Bucket), ht->u.flags & HASH_FLAG_PERSISTENT);
 	ht->arHash = (uint32_t*)&uninitialized_bucket;
 	HANDLE_UNBLOCK_INTERRUPTIONS();
 }
@@ -1753,7 +1754,7 @@ ZEND_API int zend_hash_sort_ex(HashTable *ht, sort_func_t sort, compare_func_t c
 		if (renumber) {
 			ht->u.flags |= HASH_FLAG_PACKED;
 			ht->nTableMask = 0;
-			ht->arData = erealloc(ht->arData, ht->nTableSize * sizeof(Bucket));
+			ht->arData = perealloc(ht->arData, ht->nTableSize * sizeof(Bucket), ht->u.flags & HASH_FLAG_PERSISTENT);
 			ht->arHash = (uint32_t*)&uninitialized_bucket;
 		} else {
 			zend_hash_rehash(ht);
