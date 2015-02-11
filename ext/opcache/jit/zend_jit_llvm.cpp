@@ -3979,7 +3979,11 @@ static Value* zend_jit_load_operand_addr(zend_llvm_ctx &llvm_ctx,
 	Value *zv_addr = zend_jit_load_operand(llvm_ctx,
 				op_type, op, ssa_var, info, check, opline, fetch_obj, mode);
 
-	if (op_type == IS_VAR) {		
+	if (op_type == IS_VAR) {
+		if (!zv_addr) {
+			*should_free = NULL;
+			return NULL;
+		}
 		PHI_DCL(zv_addr, 3);
 		PHI_DCL(to_free, 3);
 		BasicBlock *bb_follow = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
@@ -7035,7 +7039,7 @@ static int zend_jit_concat_function(zend_llvm_ctx      &llvm_ctx,
 				bb_do_concat = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 			}
 			llvm_ctx.builder.CreateBr(bb_do_concat);
-		} else {
+		} else if (result_addr) {
 			BasicBlock *bb_same_op = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 			bb_cont = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 
@@ -12800,7 +12804,7 @@ static int zend_jit_assign_op(zend_llvm_ctx     &llvm_ctx,
 			break;
 		case ZEND_ASSIGN_DIM:
 			{
-				if (OP1_MAY_BE(IS_OBJECT)) {
+				if (OP1_MAY_BE(MAY_BE_OBJECT)) {
 					ASSERT_NOT_REACHED();
 				}
 
@@ -13003,7 +13007,12 @@ static int zend_jit_assign_op(zend_llvm_ctx     &llvm_ctx,
 						bb_cont);
 				llvm_ctx.builder.SetInsertPoint(bb_cont);
 
-				retval = zend_jit_obj_proxy_op(llvm_ctx, var_ptr, val_ptr, assign_type, opline);
+				if (OP2_MAY_BE(MAY_BE_IN_REG)) {
+					Value *val_ptr = zend_jit_reload_from_reg(llvm_ctx, OP2_SSA_VAR(), OP2_INFO());
+					retval = zend_jit_obj_proxy_op(llvm_ctx, var_ptr, val_ptr, assign_type, opline);
+				} else {
+					retval = zend_jit_obj_proxy_op(llvm_ctx, var_ptr, val_ptr, assign_type, opline);
+				}
 
 				if (RETURN_VALUE_USED(opline)) {
 					Value *result = zend_jit_load_tmp_zval(llvm_ctx, RES_OP()->var);
@@ -13710,8 +13719,14 @@ static int zend_jit_isset_isempty_dim_obj(zend_llvm_ctx     &llvm_ctx,
 				llvm_ctx.builder.SetInsertPoint(bb_has_dim);
 				PHI_DCL(bool_val, 2);
 
-				ret = zend_jit_has_dimension(llvm_ctx, has_dim_handler,
-						container, offset, (opline->extended_value & ZEND_ISSET) == 0, opline);
+				if (OP2_MAY_BE(MAY_BE_IN_REG)) {
+					Value *offset = zend_jit_reload_from_reg(llvm_ctx, OP2_SSA_VAR(), OP2_INFO());
+					ret = zend_jit_has_dimension(llvm_ctx, has_dim_handler,
+							container, offset, (opline->extended_value & ZEND_ISSET) == 0, opline);
+				} else {
+					ret = zend_jit_has_dimension(llvm_ctx, has_dim_handler,
+							container, offset, (opline->extended_value & ZEND_ISSET) == 0, opline);
+				}
 
 				zend_jit_unexpected_br(llvm_ctx,
 						llvm_ctx.builder.CreateICmpEQ(
@@ -18740,6 +18755,18 @@ int zend_opline_supports_reg_alloc(zend_op_array    *op_array,
 			case ZEND_RECV:
 			case ZEND_RECV_INIT:
 				return 0;
+			case ZEND_FETCH_DIM_W:
+			case ZEND_FETCH_DIM_RW:
+			case ZEND_FETCH_DIM_UNSET:
+			case ZEND_FETCH_DIM_FUNC_ARG:
+			case ZEND_FETCH_OBJ_W:
+			case ZEND_FETCH_OBJ_RW:
+			case ZEND_FETCH_OBJ_UNSET:
+			case ZEND_FETCH_OBJ_FUNC_ARG:
+				if (ssa_var->var == opline->result.var) {
+					return 0;
+				}
+				break;
 			default:
 				break;
 		}
