@@ -374,7 +374,7 @@ static void _class_string(string *str, zend_class_entry *ce, zval *obj, char *in
 		char *kind = "Class";
 		if (ce->ce_flags & ZEND_ACC_INTERFACE) {
 			kind = "Interface";
-		} else if ((ce->ce_flags & ZEND_ACC_TRAIT) == ZEND_ACC_TRAIT) {
+		} else if (ce->ce_flags & ZEND_ACC_TRAIT) {
 			kind = "Trait";
 		}
 		string_printf(str, "%s%s [ ", indent, kind);
@@ -389,7 +389,7 @@ static void _class_string(string *str, zend_class_entry *ce, zval *obj, char *in
 	}
 	if (ce->ce_flags & ZEND_ACC_INTERFACE) {
 		string_printf(str, "interface ");
-	} else if ((ce->ce_flags & ZEND_ACC_TRAIT) == ZEND_ACC_TRAIT) {
+	} else if (ce->ce_flags & ZEND_ACC_TRAIT) {
 		string_printf(str, "trait ");
 	} else {
 		if (ce->ce_flags & (ZEND_ACC_IMPLICIT_ABSTRACT_CLASS|ZEND_ACC_EXPLICIT_ABSTRACT_CLASS)) {
@@ -1852,6 +1852,12 @@ ZEND_METHOD(reflection_function, getStaticVariables)
 	/* Return an empty array in case no static variables exist */
 	array_init(return_value);
 	if (fptr->type == ZEND_USER_FUNCTION && fptr->op_array.static_variables != NULL) {
+		if (GC_REFCOUNT(fptr->op_array.static_variables) > 1) {
+			if (!(GC_FLAGS(fptr->op_array.static_variables) & IS_ARRAY_IMMUTABLE)) {
+				GC_REFCOUNT(fptr->op_array.static_variables)--;
+			}
+			fptr->op_array.static_variables = zend_array_dup(fptr->op_array.static_variables);
+		}
 		zend_hash_apply_with_argument(fptr->op_array.static_variables, (apply_func_arg_t) zval_update_constant_inline_change, fptr->common.scope);
 		zend_hash_copy(Z_ARRVAL_P(return_value), fptr->op_array.static_variables, zval_add_ref);
 	}
@@ -4084,7 +4090,7 @@ ZEND_METHOD(reflection_class, isInstantiable)
 		return;
 	}
 	GET_REFLECTION_OBJECT_PTR(ce);
-	if (ce->ce_flags & (ZEND_ACC_INTERFACE | ZEND_ACC_EXPLICIT_ABSTRACT_CLASS | ZEND_ACC_IMPLICIT_ABSTRACT_CLASS)) {
+	if (ce->ce_flags & (ZEND_ACC_INTERFACE | ZEND_ACC_TRAIT | ZEND_ACC_EXPLICIT_ABSTRACT_CLASS | ZEND_ACC_IMPLICIT_ABSTRACT_CLASS)) {
 		RETURN_FALSE;
 	}
 
@@ -4143,7 +4149,7 @@ ZEND_METHOD(reflection_class, isInterface)
    Returns whether this is a trait */
 ZEND_METHOD(reflection_class, isTrait)
 {
-	_class_check_flag(INTERNAL_FUNCTION_PARAM_PASSTHRU, ZEND_ACC_TRAIT & ~ZEND_ACC_EXPLICIT_ABSTRACT_CLASS);
+	_class_check_flag(INTERNAL_FUNCTION_PARAM_PASSTHRU, ZEND_ACC_TRAIT);
 }
 /* }}} */
 
