@@ -10158,7 +10158,7 @@ static int zend_jit_assign_to_variable(zend_llvm_ctx    &llvm_ctx,
 				zend_jit_expected_br(llvm_ctx,
 					llvm_ctx.builder.CreateICmpNE(
 						llvm_ctx.builder.CreateAnd(
-							op2_type_info,
+							op1_type_info,
 							llvm_ctx.builder.getInt32(IS_TYPE_COLLECTABLE << Z_TYPE_FLAGS_SHIFT)),
 					llvm_ctx.builder.getInt32(0)),
 					bb_follow,
