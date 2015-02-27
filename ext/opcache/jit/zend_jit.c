@@ -161,6 +161,7 @@ static void zend_jit_collect_args_info(zend_jit_call_info *call_info)
     		case ZEND_INIT_FCALL:
     		case ZEND_INIT_FCALL_BY_NAME:
     		case ZEND_INIT_NS_FCALL_BY_NAME:
+    		case ZEND_INIT_DYNAMIC_CALL:
 			case ZEND_NEW:
 			case ZEND_INIT_METHOD_CALL:
 			case ZEND_INIT_STATIC_METHOD_CALL:
@@ -168,6 +169,9 @@ static void zend_jit_collect_args_info(zend_jit_call_info *call_info)
 				level++;
 				break;
 			case ZEND_DO_FCALL:
+			case ZEND_DO_ICALL:
+			case ZEND_DO_UCALL:
+			case ZEND_DO_FCALL_BY_NAME:
 				level--;
 				break;
 		}
@@ -219,6 +223,7 @@ static int zend_jit_op_array_analyze_calls(zend_jit_context *ctx, zend_op_array 
 					/* break missing intentionally */
 	    		case ZEND_INIT_FCALL_BY_NAME:
 	    		case ZEND_INIT_NS_FCALL_BY_NAME:
+	    		case ZEND_INIT_DYNAMIC_CALL:
 				case ZEND_NEW:
 				case ZEND_INIT_METHOD_CALL:
 				case ZEND_INIT_STATIC_METHOD_CALL:
@@ -227,6 +232,9 @@ static int zend_jit_op_array_analyze_calls(zend_jit_context *ctx, zend_op_array 
 					call++;
 					break;
 				case ZEND_DO_FCALL:
+				case ZEND_DO_ICALL:
+				case ZEND_DO_UCALL:
+				case ZEND_DO_FCALL_BY_NAME:
 					call--;
 					if (call_stack[call]) {
 						call_stack[call]->caller_call_opline = opline;

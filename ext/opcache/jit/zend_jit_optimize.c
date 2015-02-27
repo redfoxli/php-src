@@ -321,13 +321,14 @@ static int zend_jit_sort_blocks(zend_jit_context *ctx, zend_op_array *op_array)
 			case ZEND_JMP_SET:
 			case ZEND_COALESCE:
 			case ZEND_CATCH:
-			case ZEND_FE_RESET:
+			case ZEND_FE_RESET_R:
+			case ZEND_FE_RESET_RW:
 			case ZEND_NEW:
 				block[bb->successors[0]].flags |= TARGET_BLOCK_MARK;
 				block[bb->successors[1]].flags |= FOLLOW_BLOCK_MARK;
 				break;
 			case ZEND_OP_DATA:
-				if ((op-1)->opcode == ZEND_FE_FETCH) {
+				if ((op-1)->opcode == ZEND_FE_FETCH_R || (op-1)->opcode == ZEND_FE_FETCH_RW) {
 					block[bb->successors[0]].flags |= TARGET_BLOCK_MARK;
 					block[bb->successors[1]].flags |= FOLLOW_BLOCK_MARK;
 				} else if (bb->successors[0] >= 0) {
@@ -2065,6 +2066,9 @@ static int zend_jit_calc_range(zend_jit_context *ctx, zend_op_array *op_array, i
 			break;
 //???
 		case ZEND_DO_FCALL: 
+		case ZEND_DO_ICALL: 
+		case ZEND_DO_UCALL: 
+		case ZEND_DO_FCALL_BY_NAME: 
 			if (info->ssa[line].result_def == var) {
 				zend_jit_call_info *call_info = info->callee_info;
 
@@ -2748,7 +2752,8 @@ static void zend_jit_update_type_info(zend_jit_context *ctx,
 	     (opline-1)->opcode == ZEND_ASSIGN_BW_OR ||
 	     (opline-1)->opcode == ZEND_ASSIGN_BW_AND ||
 	     (opline-1)->opcode == ZEND_ASSIGN_BW_XOR ||
-	     (opline-1)->opcode == ZEND_FE_FETCH)) {
+	     (opline-1)->opcode == ZEND_FE_FETCH_R ||
+	     (opline-1)->opcode == ZEND_FE_FETCH_RW)) {
 		opline--;
 		i--;
 	}
@@ -3908,13 +3913,15 @@ static void zend_jit_update_type_info(zend_jit_context *ctx,
 //		case ZEND_ISSET_ISEMPTY_VAR:
 // TODO: ???
 //			break;
-		case ZEND_FE_RESET:
+		case ZEND_FE_RESET_R:
+		case ZEND_FE_RESET_RW:
 			if (ssa[i].op1_def) {
 				tmp = t1;
 				if (t1 & MAY_BE_RCN) {
 					tmp |= MAY_BE_RC1;
 				}
-				if (opline->extended_value & ZEND_FE_FETCH_BYREF) {
+				if (opline->opcode == ZEND_FE_RESET_RW) {
+//???
 					tmp |= MAY_BE_REF;
 				}
 				UPDATE_SSA_TYPE(tmp, ssa[i].op1_def);
@@ -3924,7 +3931,8 @@ static void zend_jit_update_type_info(zend_jit_context *ctx,
 					UPDATE_SSA_OBJ_TYPE(NULL, 0, ssa[i].op1_def);
 				}
 			}
-			if (opline->extended_value & ZEND_FE_FETCH_BYREF) {
+			if (opline->opcode == ZEND_FE_RESET_RW) {
+//???
 				tmp = MAY_BE_DEF | MAY_BE_REF | (t1 & (MAY_BE_ARRAY | MAY_BE_OBJECT));
 			} else if (opline->op1_type == IS_TMP_VAR || opline->op1_type == IS_CONST) {
 				tmp = MAY_BE_DEF | MAY_BE_RC1 | (t1 & (MAY_BE_ARRAY | MAY_BE_OBJECT | MAY_BE_ARRAY_KEY_ANY | MAY_BE_ARRAY_OF_ANY | MAY_BE_ARRAY_OF_REF));
@@ -3938,15 +3946,16 @@ static void zend_jit_update_type_info(zend_jit_context *ctx,
 				UPDATE_SSA_OBJ_TYPE(NULL, 0, ssa[i].result_def);
 			}
 			break;
-		case ZEND_FE_FETCH:
+		case ZEND_FE_FETCH_R:
+		case ZEND_FE_FETCH_RW:
 			if (t1 & MAY_BE_OBJECT) {
-				if (opline->extended_value & ZEND_FE_FETCH_BYREF) {
+				if (opline->opcode == ZEND_FE_FETCH_RW) {
 					tmp = MAY_BE_DEF | MAY_BE_REF | MAY_BE_ANY | MAY_BE_ARRAY_KEY_ANY | MAY_BE_ARRAY_OF_ANY | MAY_BE_ARRAY_OF_REF;
 				} else {
 					tmp = MAY_BE_DEF | MAY_BE_REF | MAY_BE_RCN | MAY_BE_ANY | MAY_BE_ARRAY_KEY_ANY | MAY_BE_ARRAY_OF_ANY | MAY_BE_ARRAY_OF_REF;
 				}
 			} else if (t1 & MAY_BE_ARRAY) {
-				if (opline->extended_value & ZEND_FE_FETCH_BYREF) {
+				if (opline->opcode == ZEND_FE_FETCH_RW) {
 					tmp = MAY_BE_DEF | MAY_BE_REF | MAY_BE_RCN | MAY_BE_ANY | MAY_BE_ARRAY_KEY_ANY | MAY_BE_ARRAY_OF_ANY | MAY_BE_ARRAY_OF_REF;
 				} else {
 					tmp = MAY_BE_DEF | ((t1 & MAY_BE_ARRAY_OF_ANY) >> 16);
@@ -3960,7 +3969,7 @@ static void zend_jit_update_type_info(zend_jit_context *ctx,
 					}
 				}
 			} else {
-				if (opline->extended_value & ZEND_FE_FETCH_BYREF) {
+				if (opline->opcode == ZEND_FE_FETCH_RW) {
 					tmp = MAY_BE_DEF | MAY_BE_REF;
 				} else {
 					tmp = MAY_BE_DEF | MAY_BE_RCN;
@@ -4141,7 +4150,10 @@ static void zend_jit_update_type_info(zend_jit_context *ctx,
 				UPDATE_SSA_TYPE(tmp, ssa[i].result_def);
 			}
 			break;
-		case ZEND_DO_FCALL: 
+		case ZEND_DO_FCALL:
+		case ZEND_DO_ICALL:
+		case ZEND_DO_UCALL:
+		case ZEND_DO_FCALL_BY_NAME:
 			if (ssa[i].result_def >= 0) {
 				zend_jit_call_info *call_info = info->callee_info;
 
@@ -4296,7 +4308,7 @@ static int is_recursive_tail_call(zend_jit_context *ctx,
 
 		zend_op *op = op_array->opcodes + info->ssa_var[info->ssa[opline - op_array->opcodes].op1_use].definition;
 
-		if (op->opcode == ZEND_DO_FCALL) {
+		if (op->opcode == ZEND_DO_UCALL) {
 			zend_jit_call_info *call_info = info->callee_info;
 
 			while (call_info && call_info->caller_call_opline != op) {
@@ -5049,6 +5061,9 @@ static void zend_jit_check_no_symtab(zend_op_array *op_array)
 //???					}
 //???					break;
 				case ZEND_DO_FCALL:
+				case ZEND_DO_ICALL:
+				case ZEND_DO_UCALL:
+				case ZEND_DO_FCALL_BY_NAME:
 					{
 						zend_jit_call_info *call_info = info->callee_info;
 
@@ -5195,7 +5210,10 @@ static void zend_jit_check_no_frame(zend_jit_context *ctx, zend_op_array *op_arr
 			zend_op *opline = op_array->opcodes + i;
 			if (!zend_opline_supports_jit(op_array, opline)) {
 				return;
-			} else if (opline->opcode == ZEND_DO_FCALL) {
+			} else if (opline->opcode == ZEND_DO_FCALL ||
+			           opline->opcode == ZEND_DO_ICALL ||
+			           opline->opcode == ZEND_DO_UCALL ||
+			           opline->opcode == ZEND_DO_FCALL_BY_NAME) {
 				zend_jit_call_info *call_info = info->callee_info;
 
 				while (call_info) {

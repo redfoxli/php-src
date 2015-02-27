@@ -1037,8 +1037,8 @@ static int zend_jit_call_handler(zend_llvm_ctx &llvm_ctx,
 				{"UNSET_VAR",                       3},
 				{"UNSET_DIM",                       3},
 				{"UNSET_OBJ",                       3},
-				{"FE_RESET",                        1},
-				{"FE_FETCH",                        1},
+				{"FE_RESET_R",                      1},
+				{"FE_FETCH_R",                      1},
 				{"EXIT",                            1},
 				{"FETCH_R",                         3},
 				{"FETCH_DIM_R",                     3},
@@ -1084,14 +1084,14 @@ static int zend_jit_call_handler(zend_llvm_ctx &llvm_ctx,
 				{"STRLEN",                          1},
 				{"DEFINED",                         1},
 				{"TYPE_CHECK",                      1},
-				{"OP_124",                          0},
-				{"OP_125",                          0},
-				{"OP_126",                          0},
-				{"OP_127",                          0},
-				{"OP_128",                          0},
-				{"OP_129",                          0},
-				{"OP_130",                          0},
-				{"OP_131",                          0},
+				{"VERIFY_RETURN_TYPE",              1},
+				{"FE_RESET_RW",                     1},
+				{"FE_FETCH_RW",                     1},
+				{"FE_FREE",                         1},
+				{"INIT_DYNAMIC_CALL",               2},
+				{"DO_ICALL",                        0},
+				{"DO_UCALL",                        0},
+				{"DO_FCALL_BY_NAME",                0},
 				{"PRE_INC_OBJ",                     3},
 				{"PRE_DEC_OBJ",                     3},
 				{"POST_INC_OBJ",                    3},
@@ -1129,7 +1129,8 @@ static int zend_jit_call_handler(zend_llvm_ctx &llvm_ctx,
 				{"POW",                             3},
 		        {"ASSIGN_POW",                      3},
         		{"BIND_GLOBAL",                     3},
-        		{"COALESCE",                        1}
+        		{"COALESCE",                        1},
+				{"SPACESHIP",                       3}
 			};
 			typedef struct _zend_jit_op_type_desc {
 				const char *name;
@@ -3245,10 +3246,13 @@ static Value* zend_jit_load_array_ht(zend_llvm_ctx &llvm_ctx,
                                      Value         *arr_addr)
 {
 	return zend_jit_GEP(
-				llvm_ctx,
-				arr_addr,
-				offsetof(zend_array, ht),
-				PointerType::getUnqual(llvm_ctx.HashTable_type));
+		llvm_ctx,
+		arr_addr,
+		0,
+		PointerType::getUnqual(llvm_ctx.HashTable_type));
+//	return llvm_ctx.builder.CreateBitCast(
+//		arr_addr,
+//		PointerType::getUnqual(llvm_ctx.HashTable_type));
 }
 /* }}} */
 
@@ -4384,6 +4388,10 @@ static int zend_jit_zval_ptr_dtor_ex(zend_llvm_ctx &llvm_ctx,
 					bb_finish);
 				llvm_ctx.builder.SetInsertPoint(bb_gc);
 			}
+			if (info & MAY_BE_REF) {
+				// reload counted
+				counted = zend_jit_load_counted(llvm_ctx, zval_addr, ssa_var, info);
+			}
 			//JIT: if (UNEXPECTED(!Z_GC_INFO_P(zv))) {
 			bb_gc = BasicBlock::Create(llvm_ctx.context, "", llvm_ctx.function);
 			zend_jit_expected_br(llvm_ctx,
@@ -5089,7 +5097,7 @@ static Value *zend_jit_cache_slot_addr(zend_llvm_ctx    &llvm_ctx,
 					llvm_ctx._execute_data,
 					offsetof(zend_execute_data, run_time_cache),
 					PointerType::getUnqual(PointerType::getUnqual(LLVM_GET_LONG_TY(llvm_ctx.context)))), 4),
-			cache_slot * sizeof(void*),
+			cache_slot,
 			PointerType::getUnqual(type));
 }
 /* }}} */
@@ -15628,7 +15636,7 @@ static int zend_jit_init_func_execute_data(zend_llvm_ctx    &llvm_ctx,
 
 	//JIT: EX_LOAD_RUN_TIME_CACHE(op_array);
 #if ZEND_EX_USE_RUN_TIME_CACHE
-	if (func && !func->op_array.last_cache_slot) {
+	if (func && !func->op_array.cache_size) {
 	    Value *cache = llvm_ctx.builder.CreateAlignedStore(
     		LLVM_GET_LONG(0),
 			zend_jit_GEP(
@@ -15674,7 +15682,7 @@ static int zend_jit_init_func_execute_data(zend_llvm_ctx    &llvm_ctx,
 							zend_jit_GEP(
 								llvm_ctx,
 								func_addr,
-								offsetof(zend_function, op_array.last_cache_slot),
+								offsetof(zend_function, op_array.cache_size),
 								PointerType::getUnqual(Type::getInt32Ty(llvm_ctx.context))), 4),
 						llvm_ctx.builder.getInt32(0)),
 					bb_follow,
@@ -15682,21 +15690,47 @@ static int zend_jit_init_func_execute_data(zend_llvm_ctx    &llvm_ctx,
 				llvm_ctx.builder.SetInsertPoint(bb_follow);			
 			}			
 			//JIT: op_array->run_time_cache = zend_arena_calloc(&CG(arena), op_array->last_cache_slot, sizeof(void*));
+#if 1
 			cache =
 				llvm_ctx.builder.CreatePtrToInt(
 					zend_jit_arena_calloc(llvm_ctx,
 						llvm_ctx._CG_arena,
 						(func ? 
-							(Value*)llvm_ctx.builder.getInt32(func->op_array.last_cache_slot) :
+							(Value*)llvm_ctx.builder.getInt32(func->op_array.cache_size) :
 							(Value*)llvm_ctx.builder.CreateAlignedLoad(
 								zend_jit_GEP(
 									llvm_ctx,
 									func_addr,
-									offsetof(zend_function, op_array.last_cache_slot),
+									offsetof(zend_function, op_array.cache_size),
 									PointerType::getUnqual(Type::getInt32Ty(llvm_ctx.context))), 4)),
-						sizeof(void*),
+						1,
 						lineno),
-					LLVM_GET_LONG_TY(llvm_ctx.context)),
+					LLVM_GET_LONG_TY(llvm_ctx.context));
+#else
+			Value *cache_size =	(func ? 
+							(Value*)llvm_ctx.builder.getInt32(func->op_array.cache_size) :
+							(Value*)llvm_ctx.builder.CreateAlignedLoad(
+								zend_jit_GEP(
+									llvm_ctx,
+									func_addr,
+									offsetof(zend_function, op_array.cache_size),
+									PointerType::getUnqual(Type::getInt32Ty(llvm_ctx.context))), 4));
+			Value *cache_addr =
+				zend_jit_arena_alloc(llvm_ctx,
+					llvm_ctx._CG_arena,
+					cache_size,
+					lineno);
+			cache =
+				llvm_ctx.builder.CreatePtrToInt(
+					cache_addr,
+					LLVM_GET_LONG_TY(llvm_ctx.context));
+			//JIT: memset(cache, 0, size);
+			llvm_ctx.builder.CreateMemSet(
+				cache_addr,
+				llvm_ctx.builder.getInt8(0),
+				cache_size,
+				4);
+#endif
 		    llvm_ctx.builder.CreateAlignedStore(
     			cache,
 				zend_jit_GEP(
@@ -15997,11 +16031,15 @@ static uint32_t zend_jit_find_num_args(zend_op_array *op_array,
 		opline--;
 		switch (opline->opcode) {
 			case ZEND_DO_FCALL:
+			case ZEND_DO_ICALL:
+			case ZEND_DO_UCALL:
+			case ZEND_DO_FCALL_BY_NAME:
 				level++;
 				break;
 			case ZEND_INIT_FCALL:
 			case ZEND_INIT_FCALL_BY_NAME:
 			case ZEND_INIT_NS_FCALL_BY_NAME:
+			case ZEND_INIT_DYNAMIC_CALL:
 			case ZEND_INIT_METHOD_CALL:
 			case ZEND_INIT_STATIC_METHOD_CALL:
 			case ZEND_INIT_USER_CALL:
@@ -18064,6 +18102,9 @@ static int zend_jit_codegen_ex(zend_jit_context *ctx,
 					if (!zend_jit_return(llvm_ctx, op_array, opline)) return 0;
 					break;
 				case ZEND_DO_FCALL:
+				case ZEND_DO_ICALL:
+				case ZEND_DO_UCALL:
+				case ZEND_DO_FCALL_BY_NAME:
 					if (!zend_jit_do_fcall(llvm_ctx, ctx, op_array, opline)) return 0;
 					llvm_ctx.call_level--;
 					break;
@@ -18114,7 +18155,8 @@ static int zend_jit_codegen_ex(zend_jit_context *ctx,
 				case ZEND_ISSET_ISEMPTY_PROP_OBJ:
 					if (!zend_jit_isset_isempty_dim_prop_obj(llvm_ctx, ctx, op_array, opline)) return 0;
 					break;
-				case ZEND_FE_FETCH:
+				case ZEND_FE_FETCH_R:
+				case ZEND_FE_FETCH_RW:
 					if (!zend_jit_fe_fetch(llvm_ctx, op_array, ctx, opline)) return 0;
 					break;
 //				case ZEND_FAST_CALL:
@@ -18155,6 +18197,9 @@ static int zend_jit_codegen_ex(zend_jit_context *ctx,
 					if (!zend_jit_tail_handler(llvm_ctx, opline)) return 0;
 					break;
 //				case ZEND_DO_FCALL:
+//				case ZEND_DO_ICALL:
+//				case ZEND_DO_UCALL:
+//				case ZEND_DO_FCALL_BY_NAME:
 //					if (zend_hash_find(EG(function_table), Z_STRVAL_P(OP1_OP()->zv), Z_STRLEN_P(OP1_OP()->zv)+1, (void**)&fn) == SUCCESS &&
 //					    fn->type == ZEND_INTERNAL_FUNCTION) {
 //						if (!zend_jit_handler(asm_buf, opline)) return 0;
@@ -18173,11 +18218,13 @@ static int zend_jit_codegen_ex(zend_jit_context *ctx,
 				case ZEND_JMPNZ_EX:
 				case ZEND_JMP_SET:
 				case ZEND_COALESCE:
-				case ZEND_FE_RESET:
+				case ZEND_FE_RESET_R:
+				case ZEND_FE_RESET_RW:
 					if (!zend_jit_handler(llvm_ctx, opline)) return 0;
 					if (!zend_jit_cond_jmp(llvm_ctx, opline, OP_JMP_ADDR(opline, *OP2_OP()), TARGET_BB(OP_JMP_ADDR(opline, *OP2_OP()) - op_array->opcodes), TARGET_BB(block[b + 1].start))) return 0;
 					break;
-				case ZEND_FE_FETCH:
+				case ZEND_FE_FETCH_R:
+				case ZEND_FE_FETCH_RW:
 					if (!zend_jit_handler(llvm_ctx, opline)) return 0;
 					if (!zend_jit_cond_jmp(llvm_ctx, opline, OP_JMP_ADDR(opline, *OP2_OP()), TARGET_BB(OP_JMP_ADDR(opline, *OP2_OP()) - op_array->opcodes), TARGET_BB(block[b + 1].start))) return 0;
 					break;
@@ -18203,6 +18250,7 @@ static int zend_jit_codegen_ex(zend_jit_context *ctx,
 				case ZEND_INIT_FCALL_BY_NAME:
 				case ZEND_INIT_NS_FCALL_BY_NAME:
 				case ZEND_INIT_METHOD_CALL:
+				case ZEND_INIT_DYNAMIC_CALL:
 				case ZEND_INIT_STATIC_METHOD_CALL:
 				case ZEND_INIT_USER_CALL:
 					llvm_ctx.call_level++;
@@ -18696,7 +18744,8 @@ int zend_opline_supports_jit(zend_op_array    *op_array,
 		case ZEND_TYPE_CHECK:
 //???		case ZEND_INIT_ARRAY:
 //???		case ZEND_ADD_ARRAY_ELEMENT:
-//???		case ZEND_FE_FETCH:
+//???		case ZEND_FE_FETCH_R:
+//???		case ZEND_FE_FETCH_RW:
 //???		case ZEND_ISSET_ISEMPTY_PROP_OBJ:
 		case ZEND_ISSET_ISEMPTY_DIM_OBJ:
 		case ZEND_INIT_FCALL:
@@ -18733,6 +18782,9 @@ int zend_opline_supports_jit(zend_op_array    *op_array,
 			return opline->extended_value != ZEND_ASSIGN_OBJ &&
 			       (opline->extended_value != ZEND_ASSIGN_DIM || !OP1_MAY_BE(MAY_BE_OBJECT));
 		case ZEND_DO_FCALL:
+		case ZEND_DO_ICALL:
+		case ZEND_DO_UCALL:
+		case ZEND_DO_FCALL_BY_NAME:
 			return 1;
 		case ZEND_OP_DATA:
 			zend_opline_supports_jit(op_array, opline - 1);
@@ -18751,6 +18803,9 @@ int zend_opline_supports_reg_alloc(zend_op_array    *op_array,
 	if (zend_opline_supports_jit(op_array, opline)) {
 		switch (opline->opcode) {
 			case ZEND_DO_FCALL:
+			case ZEND_DO_ICALL:
+			case ZEND_DO_UCALL:
+			case ZEND_DO_FCALL_BY_NAME:
 			case ZEND_ASSIGN_OBJ:
 			case ZEND_RECV:
 			case ZEND_RECV_INIT:
@@ -18763,7 +18818,7 @@ int zend_opline_supports_reg_alloc(zend_op_array    *op_array,
 			case ZEND_FETCH_OBJ_RW:
 			case ZEND_FETCH_OBJ_UNSET:
 			case ZEND_FETCH_OBJ_FUNC_ARG:
-				if (ssa_var->var == opline->result.var) {
+				if (ssa_var->var == EX_VAR_TO_NUM(opline->result.var)) {
 					return 0;
 				}
 				break;
